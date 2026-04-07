@@ -12,6 +12,8 @@ const corsHeaders = {
     "Access-Control-Allow-Headers":
         "Authorization, Content-Type, mcp-session-id, Last-Event-ID, mcp-protocol-version",
     "Access-Control-Expose-Headers": "mcp-session-id, mcp-protocol-version",
+    /** nginx: не буферить Streamable HTTP / SSE, иначе клиенты (Cursor) рвут соединение → Abort / SSE undefined */
+    "X-Accel-Buffering": "no",
 };
 
 async function handleMcp(request: Request): Promise<Response> {
