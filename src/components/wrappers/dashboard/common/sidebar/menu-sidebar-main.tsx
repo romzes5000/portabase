@@ -18,12 +18,20 @@ export const SidebarMenuCustomMain = () => {
     const BASE_URL = `/dashboard`;
 
     const {data: session, isPending, error} = authClient.useSession();
+    const {data: activeMember} = authClient.useActiveMember();
 
     if (isPending) return null;
 
     if (error || !session) {
         return null;
     }
+
+    /** Oxem: show Administration (Agents, …) for org admin/owner, not only global user.role */
+    const isGlobalAdmin =
+        session.user.role === "admin" || session.user.role === "superadmin";
+    const isOrgAdminOrOwner =
+        activeMember?.role === "admin" || activeMember?.role === "owner";
+    const showAdministrationMenu = isGlobalAdmin || isOrgAdminOrOwner;
 
     const groupContentApplication: SidebarGroupItem["group_content"] = [
         {title: "Dashboard", url: "/home", icon: Home, type: "item"},
@@ -50,7 +58,7 @@ export const SidebarMenuCustomMain = () => {
     ];
 
 
-    if (session?.user.role == "admin" || session?.user.role == "superadmin") {
+    if (showAdministrationMenu) {
         items.push({
             label: "Administration",
             type: "list",
