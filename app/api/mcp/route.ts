@@ -45,7 +45,7 @@ async function handleMcp(request: Request): Promise<Response> {
     const body = res.body.pipeThrough(
         new TransformStream({
             flush() {
-                cleanup();
+                return cleanup();
             },
         }),
     );
