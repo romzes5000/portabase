@@ -1,0 +1,76 @@
+# Скопируйте этот файл в отдельный репозиторий deploy (не в форк portabase).
+# Настройте secrets и при необходимости замените шаги push/deploy.
+
+name: Build Portabase from fork
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Тег или полный SHA на romzes5000/portabase"
+        required: true
+        type: string
+      image_tag:
+        description: "Тег образа (по умолчанию = короткий SHA)"
+        required: false
+        type: string
+
+env:
+  FORK_REPO: romzes5000/portabase
+  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/portabase
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout application source
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.FORK_REPO }}
+          ref: ${{ inputs.ref }}
+          fetch-depth: 0
+
+      - name: Set image tag
+        id: tag
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_IMAGE_TAG:-}" ]; then
+            echo "tag=${INPUT_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          elif [[ "${INPUT_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "tag=${INPUT_REF:0:7}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${INPUT_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/dockerfile/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+          target: prod
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Раскомментируйте и настройте выкат (SSH, kubectl, ansible):
+      # - name: Deploy
+      #   run: echo "Add deploy steps"
