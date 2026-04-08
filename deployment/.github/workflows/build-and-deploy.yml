@@ -1,4 +1,4 @@
-# Репозиторий portabase-deploy: сборка образа из форка + опциональный выкат по SSH.
+# Репозиторий Oxem-Studio/portabase-deploy: сборка образа из форка + опциональный выкат по SSH.
 
 name: Build Portabase from fork
 
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Тег или полный SHA на romzes5000/portabase"
+        description: "Тег или полный SHA на romzes5000/portabase (исходный форк)"
         required: true
         type: string
       image_tag:
@@ -19,18 +19,16 @@ on:
         type: boolean
         default: false
       use_self_hosted:
-        description: "Сборка и деплой на self-hosted runner (как GitLab tag oxem-hetzner). Нужен зарегистрированный runner в repo/org."
+        description: "Сборка и деплой на self-hosted runner Oxem-Studio (орг). Выключите для GitHub-hosted."
         required: false
         type: boolean
-        default: false
+        default: true
 
 env:
   FORK_REPO: romzes5000/portabase
-  IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/portabase
 
 jobs:
   build:
-    # По умолчанию GitHub-hosted; self-hosted — если включён input и runner зарегистрирован (Settings → Actions → Runners).
     runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     permissions:
       contents: read
@@ -41,6 +39,11 @@ jobs:
       tag: ${{ steps.tag.outputs.tag }}
 
     steps:
+      - name: GHCR image name (owner lowercase)
+        id: ghcr
+        run: |
+          echo "image_base=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/portabase" >> "$GITHUB_OUTPUT"
+
       - name: Checkout application source
         uses: actions/checkout@v4
         with:
@@ -67,8 +70,9 @@ jobs:
         id: image_ref
         env:
           TAG: ${{ steps.tag.outputs.tag }}
+          BASE: ${{ steps.ghcr.outputs.image_base }}
         run: |
-          echo "full=${{ env.IMAGE_NAME }}:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "full=${BASE}:${TAG}" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -87,7 +91,7 @@ jobs:
           file: ./docker/dockerfile/Dockerfile
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
+            ${{ steps.ghcr.outputs.image_base }}:${{ steps.tag.outputs.tag }}
           target: prod
           platforms: linux/amd64
           cache-from: type=gha
@@ -104,16 +108,17 @@ jobs:
           IMAGE_FULL: ${{ needs.build.outputs.image_full }}
           TAG: ${{ needs.build.outputs.tag }}
           GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_LOGIN_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
-          envs: IMAGE_FULL,TAG,GHCR_PULL_TOKEN
+          envs: IMAGE_FULL,TAG,GHCR_PULL_TOKEN,GHCR_LOGIN_USER
           script: |
             set -euo pipefail
             if [ -n "${GHCR_PULL_TOKEN:-}" ]; then
-              echo "$GHCR_PULL_TOKEN" | docker login ghcr.io -u romzes5000 --password-stdin
+              echo "$GHCR_PULL_TOKEN" | docker login ghcr.io -u "${GHCR_LOGIN_USER}" --password-stdin
             fi
             docker pull "${IMAGE_FULL}"
             install -d /opt/portabase

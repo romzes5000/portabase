@@ -1,6 +1,6 @@
 # Ветки форка и деплой (Oxem)
 
-Этот документ фиксирует договорённости для [форка на GitHub](https://github.com/romzes5000/portabase) и отдельного репозитория CI/CD: **[romzes5000/portabase-deploy](https://github.com/romzes5000/portabase-deploy)** (см. также [deployment/README.md](https://github.com/romzes5000/portabase/tree/main/deployment) в форке — зеркало инструкций).
+Этот документ фиксирует договорённости для [форка на GitHub](https://github.com/romzes5000/portabase) и отдельного репозитория CI/CD: **[Oxem-Studio/portabase-deploy](https://github.com/Oxem-Studio/portabase-deploy)** (см. также [deployment/README.md](https://github.com/romzes5000/portabase/tree/main/deployment) в форке — зеркало инструкций).
 
 ## Интеграция: ветка `main`
 
@@ -33,10 +33,10 @@
 - Так воспроизводим сборку и откаты.
 - Ветка **`main`** удобна для **staging** / внутреннего контура, если нужен автодеплой «последнего коммита»; для прода это опционально и осознанно.
 
-Сборка и выкат выполняются из **[portabase-deploy](https://github.com/romzes5000/portabase-deploy)** (`checkout` форка на выбранный `ref`).
+Сборка и выкат выполняются из **[portabase-deploy](https://github.com/Oxem-Studio/portabase-deploy)** (`checkout` форка на выбранный `ref`).
 
 ## GitHub Actions на форке
 
 Автоматический релиз и публикация образов, завязанные на инфраструктуру апстрима, **выполняются только в репозитории `Portabase/portabase`**, не на форке (см. условия в `.github/workflows/release.yml` и `release-candidate.yml`).
 
-Свой образ и деплой настраиваются в **[portabase-deploy](https://github.com/romzes5000/portabase-deploy)**.
+Свой образ и деплой настраиваются в **[portabase-deploy](https://github.com/Oxem-Studio/portabase-deploy)**.

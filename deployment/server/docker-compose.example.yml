@@ -3,7 +3,7 @@
 
 services:
   portabase:
-    image: ghcr.io/romzes5000/portabase:${IMAGE_TAG}
+    image: ghcr.io/oxem-studio/portabase:${IMAGE_TAG}
     restart: unless-stopped
     ports:
       - "8887:80"
