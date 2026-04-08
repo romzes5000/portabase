@@ -25,19 +25,32 @@ async function handleMcp(request: Request): Promise<Response> {
         sessionIdGenerator: undefined,
     });
     const server = createPortabaseMcpServer(auth.key);
-    try {
-        await server.connect(transport);
-        const res = await transport.handleRequest(request);
-        const h = new Headers(res.headers);
-        for (const [k, v] of Object.entries(corsHeaders)) {
-            if (!h.has(k)) {
-                h.set(k, v);
-            }
+    await server.connect(transport);
+    const res = await transport.handleRequest(request);
+
+    const h = new Headers(res.headers);
+    for (const [k, v] of Object.entries(corsHeaders)) {
+        if (!h.has(k)) {
+            h.set(k, v);
         }
-        return new Response(res.body, {status: res.status, statusText: res.statusText, headers: h});
-    } finally {
-        await Promise.allSettled([server.close(), transport.close()]);
     }
+
+    const cleanup = () => Promise.allSettled([server.close(), transport.close()]);
+
+    if (!res.body) {
+        await cleanup();
+        return new Response(null, {status: res.status, statusText: res.statusText, headers: h});
+    }
+
+    const body = res.body.pipeThrough(
+        new TransformStream({
+            flush() {
+                cleanup();
+            },
+        }),
+    );
+
+    return new Response(body, {status: res.status, statusText: res.statusText, headers: h});
 }
 
 export async function GET(request: Request) {
