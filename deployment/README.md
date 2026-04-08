@@ -13,17 +13,17 @@
 
 Политика веток: [fork-workflow в portabase](https://github.com/romzes5000/portabase/blob/main/docs/fork-workflow.md).
 
-## Self-hosted runner
+## Runners (GitHub-hosted vs self-hosted)
 
-Workflow **Build Portabase from fork** использует `runs-on: self-hosted`, по тому же принципу, что [Validation / Deploy SSH в neurosales](https://github.com/Oxem-Studio/neurosales-next-app) (Oxem-Studio).
+По умолчанию workflow идёт на **`ubuntu-latest`** (как сейчас), чтобы не зависеть от своего runner’а.
 
-**Что нужно:**
+**Self-hosted** (аналог GitLab `tags: [oxem-hetzner]` в вашем старом `.gitlab-ci.yml`):
 
-1. Зарегистрировать runner для этого репозитория или для организации/аккаунта: **Settings → Actions → Runners → New self-hosted runner** (инструкция GitHub для Linux/macOS/Windows).
-2. На машине runner’а: установлен **Docker** и **Docker Buildx** (как на типичном CI-хосте), сеть до `ghcr.io` и при необходимости до SSH-хоста деплоя.
-3. Если у вас несколько self-hosted машин, задайте **общие метки** (`self-hosted`, `Linux`, `X64`) и при необходимости поменяйте в workflow на `runs-on: [self-hosted, oxem, ...]` под ваши labels.
+1. **Settings → Actions → Runners → New self-hosted runner** в репозитории `portabase-deploy` (или на уровне org, с доступом к этому репу).
+2. На машине: Docker + Buildx, исходящий доступ к `ghcr.io` (и к хосту деплоя для SSH).
+3. При запуске workflow включите input **`use_self_hosted`**. Тогда `build` и `deploy` используют `runs-on: self-hosted`.
 
-Пока runner не подключён, job’ы будут ждать в очереди.
+Если runner зарегистрирован **с дополнительной меткой** (например `oxem-hetzner`), одной метки `self-hosted` недостаточно: в [build-and-deploy.yml](.github/workflows/build-and-deploy.yml) замените выражение `runs-on` на `runs-on: [self-hosted, oxem-hetzner]` (как в [neurosales](https://github.com/Oxem-Studio/neurosales-next-app)).
 
 ## Секреты (GitHub → Settings → Secrets)
 
@@ -32,8 +32,11 @@ Workflow **Build Portabase from fork** использует `runs-on: self-hoste
 | `DEPLOY_HOST` | IP или hostname сервера |
 | `DEPLOY_USER` | SSH-пользователь (например `deploy`) |
 | `DEPLOY_SSH_KEY` | Приватный ключ (PEM), **без** passphrase для CI |
+| `GHCR_PULL_TOKEN` | (рекомендуется) PAT или `gh auth token` для `docker login ghcr.io` на сервере, если пакет приватный |
 
 Опционально: `FORK_READ_TOKEN` в workflow checkout — только если форк приложения станет приватным.
+
+На сервере compose должен ссылаться на `ghcr.io/romzes5000/portabase:${IMAGE_TAG}` — см. [server/docker-compose.ghcr.yml](server/docker-compose.ghcr.yml).
 
 ### Приватный пакет GHCR
 

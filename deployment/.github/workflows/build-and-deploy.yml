@@ -18,6 +18,11 @@ on:
         required: false
         type: boolean
         default: false
+      use_self_hosted:
+        description: "Сборка и деплой на self-hosted runner (как GitLab tag oxem-hetzner). Нужен зарегистрированный runner в repo/org."
+        required: false
+        type: boolean
+        default: false
 
 env:
   FORK_REPO: romzes5000/portabase
@@ -25,8 +30,8 @@ env:
 
 jobs:
   build:
-    # Как в Oxem-Studio/neurosales-next-app: сборка на зарегистрированном self-hosted runner (Docker + доступ к ghcr.io).
-    runs-on: self-hosted
+    # По умолчанию GitHub-hosted; self-hosted — если включён input и runner зарегистрирован (Settings → Actions → Runners).
+    runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write
@@ -84,28 +89,34 @@ jobs:
           tags: |
             ${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.tag }}
           target: prod
+          platforms: linux/amd64
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   deploy:
     needs: build
     if: ${{ github.event.inputs.deploy_to_server == 'true' && needs.build.result == 'success' }}
-    runs-on: self-hosted
+    runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         env:
           IMAGE_FULL: ${{ needs.build.outputs.image_full }}
           TAG: ${{ needs.build.outputs.tag }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           script_stop: true
-          envs: IMAGE_FULL,TAG
+          envs: IMAGE_FULL,TAG,GHCR_PULL_TOKEN
           script: |
             set -euo pipefail
+            if [ -n "${GHCR_PULL_TOKEN:-}" ]; then
+              echo "$GHCR_PULL_TOKEN" | docker login ghcr.io -u romzes5000 --password-stdin
+            fi
             docker pull "${IMAGE_FULL}"
             install -d /opt/portabase
             echo "IMAGE_TAG=${TAG}" > /opt/portabase/.env.deploy
-            docker compose --env-file /opt/portabase/.env.deploy -f /opt/portabase/docker-compose.yml up -d --remove-orphans
+            docker compose --env-file /opt/portabase/.env.deploy -f /opt/portabase/docker-compose.yml up -d --remove-orphans --force-recreate
+            docker image prune -f
