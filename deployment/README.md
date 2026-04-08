@@ -5,7 +5,7 @@
 ## Сборка (GHCR)
 
 1. **Actions** → **Build Portabase from fork** → **Run workflow**.
-2. `ref` — полный **SHA**, **имя ветки** или **тег** на форке `romzes5000/portabase`. Для выката «как у Oxem» удобно указывать ветку **`oxem/deploy`** (в неё вливается то, что должно уехать на сервер, без обязательного merge в `main` форка).
+2. `ref` — полный **SHA**, **имя ветки** или **тег** на форке `romzes5000/portabase`. Для выката «как у Oxem» удобно указывать ветку **`oxem/deploy`** (в неё вливается то, что должно уехать на сервер, без обязательного merge в `main` форка). **Автодеплой при push** в `oxem/deploy` настроен в форке (workflow **Dispatch Oxem deploy**, секрет `OXEM_DEPLOY_WORKFLOW_DISPATCH_TOKEN` — см. [docs/fork-workflow.md](https://github.com/romzes5000/portabase/blob/main/docs/fork-workflow.md)).
 3. `image_tag` — опционально; иначе для SHA берётся короткий префикс.
 4. `deploy_to_server` — включите только если настроены секреты деплоя (см. ниже).
 
