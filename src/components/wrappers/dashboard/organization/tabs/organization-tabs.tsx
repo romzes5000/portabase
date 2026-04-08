@@ -16,7 +16,6 @@ import {
 import {
     OrganizationStoragesTab
 } from "@/components/wrappers/dashboard/organization/tabs/organization-channels-tab/organization-storages-tab";
-import {OrganizationApiKeysTab} from "@/components/wrappers/dashboard/organization/tabs/organization-api-keys-tab";
 
 export type OrganizationTabsProps = {
     organization: OrganizationWithMembers;
@@ -32,15 +31,12 @@ export const OrganizationTabs = ({activeMember, organization, notificationChanne
     const [tab, setTab] = useState<string>(() => searchParams.get("tab") ?? "users");
 
     const {
-        canManageUsers,
         canManageNotifications,
         canManageStorages,
-        canManageSettings,
     } = useOrganizationPermissions(activeMember);
 
     const showChannels = canManageNotifications && canManageStorages;
-    const showApiKeys = canManageSettings;
-    const useTabsLayout = showChannels || showApiKeys;
+    const useTabsLayout = showChannels;
 
     useEffect(() => {
         const newTab = searchParams.get("tab") ?? "users";
@@ -64,11 +60,6 @@ export const OrganizationTabs = ({activeMember, organization, notificationChanne
                     <TabsTrigger className="flex-1 min-w-[120px]" value="users">
                         Users
                     </TabsTrigger>
-                    {showApiKeys && (
-                        <TabsTrigger className="flex-1 min-w-[120px]" value="api-keys">
-                            API keys
-                        </TabsTrigger>
-                    )}
                     {showChannels && (
                         <>
                             <TabsTrigger className="flex-1 min-w-[120px]" value="notifications">
@@ -83,11 +74,6 @@ export const OrganizationTabs = ({activeMember, organization, notificationChanne
                 <TabsContent className="h-full" value="users">
                     <SettingsOrganizationMembersTable organization={organization}/>
                 </TabsContent>
-                {showApiKeys && (
-                    <TabsContent className="h-full" value="api-keys">
-                        <OrganizationApiKeysTab organization={organization}/>
-                    </TabsContent>
-                )}
                 {showChannels && (
                     <>
                         <TabsContent className="h-full" value="notifications">

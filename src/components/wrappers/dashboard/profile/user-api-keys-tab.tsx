@@ -16,7 +16,6 @@ import {
     listApiKeysAction,
     revokeApiKeyAction,
 } from "@/features/keys/api-keys.action";
-import type {OrganizationWithMembers} from "@/db/schema/03_organization";
 import {useCallback, useEffect, useState} from "react";
 import {toast} from "sonner";
 
@@ -30,18 +29,19 @@ type KeyRow = {
     createdAt: Date;
 };
 
-export function OrganizationApiKeysTab({organization}: {organization: OrganizationWithMembers}) {
+/** User-scoped API keys for MCP and /api/internal (read scope). */
+export function UserApiKeysTab() {
     const [name, setName] = useState("");
     const [keys, setKeys] = useState<KeyRow[]>([]);
     const [loading, setLoading] = useState(false);
     const [newKeyPlaintext, setNewKeyPlaintext] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
-        const res = await listApiKeysAction({organizationId: organization.id});
+        const res = await listApiKeysAction({});
         if (res?.data?.success) {
             setKeys(res.data.keys as KeyRow[]);
         }
-    }, [organization.id]);
+    }, []);
 
     useEffect(() => {
         void refresh();
@@ -55,13 +55,10 @@ export function OrganizationApiKeysTab({organization}: {organization: Organizati
         setLoading(true);
         try {
             const res = await createApiKeyAction({
-                organizationId: organization.id,
                 name: name.trim(),
             });
             if (res?.validationErrors) {
-                toast.error(
-                    `Validation: ${JSON.stringify(res.validationErrors)}`,
-                );
+                toast.error(`Validation: ${JSON.stringify(res.validationErrors)}`);
                 return;
             }
             if (res?.data?.success && res.data.plaintext) {
@@ -91,7 +88,6 @@ export function OrganizationApiKeysTab({organization}: {organization: Organizati
     const handleRevoke = async (id: string) => {
         const res = await revokeApiKeyAction({
             apiKeyId: id,
-            organizationId: organization.id,
         });
         if (res?.data?.success) {
             toast.success("Key revoked");
@@ -119,14 +115,21 @@ export function OrganizationApiKeysTab({organization}: {organization: Organizati
 
     return (
         <div className="flex flex-col gap-6 max-w-2xl">
+            <div className="mb-2 space-y-1">
+                <h2 className="text-2xl font-semibold tracking-tight">API keys</h2>
+                <p className="text-sm text-muted-foreground">
+                    Read-only access to <code className="text-xs">/api/internal/*</code> and{" "}
+                    <code className="text-xs">/api/mcp</code> for MCP and automation. Keys are tied to your account and
+                    reflect organizations you belong to.
+                </p>
+            </div>
             <p className="text-sm text-muted-foreground">
-                Read-only access to <code className="text-xs">/api/internal/*</code> for MCP and automation.
                 Use <code className="text-xs">Authorization: Bearer &lt;key&gt;</code>.
             </p>
             <p className="text-sm text-muted-foreground">
-                The table below shows only a <strong>prefix</strong> so you can tell keys apart. The
-                full secret is displayed <strong>once</strong> in a dialog right after you create it
-                (we store only a hash). If you lose the key, revoke it and create a new one.
+                The table below shows only a <strong>prefix</strong> so you can tell keys apart. The full secret is
+                displayed <strong>once</strong> in a dialog right after you create it (we store only a hash). If you lose
+                the key, revoke it and create a new one.
             </p>
             <Dialog open={newKeyPlaintext !== null} onOpenChange={(open) => !open && closeNewKeyDialog()}>
                 <DialogContent className="sm:max-w-lg">
@@ -152,10 +155,10 @@ export function OrganizationApiKeysTab({organization}: {organization: Organizati
                 </DialogContent>
             </Dialog>
             <div className="flex flex-col gap-2">
-                <Label htmlFor="api-key-name">Name</Label>
+                <Label htmlFor="user-api-key-name">Name</Label>
                 <div className="flex gap-2">
                     <Input
-                        id="api-key-name"
+                        id="user-api-key-name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="e.g. Cursor MCP"

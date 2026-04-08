@@ -10,6 +10,7 @@ import { ProfileSecurity } from "../../profile/profile-security";
 import { ProfileProviders } from "../../profile/profile-providers";
 import { ProfileAccount } from "../../profile/profile-account";
 import { ProfileAppearance } from "../../profile/profile-apperance";
+import { UserApiKeysTab } from "../../profile/user-api-keys-tab";
 
 type ProfileModalProps = {
     open: boolean;
@@ -55,6 +56,10 @@ export const ProfileModal = ({ user, sessions, currentSession, accounts, open, o
 
                         <TabsContent value="account" className="mt-0 h-full p-6 lg:p-10 outline-none focus-visible:ring-0">
                             <ProfileAccount user={user} />
+                        </TabsContent>
+
+                        <TabsContent value="api-keys" className="mt-0 h-full p-6 lg:p-10 outline-none focus-visible:ring-0">
+                            <UserApiKeysTab />
                         </TabsContent>
 
                         <TabsContent value="appearance" className="mt-0 h-full p-6 lg:p-10 outline-none focus-visible:ring-0">

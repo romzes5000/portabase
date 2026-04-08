@@ -1,13 +1,10 @@
 import type {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import type {VerifiedApiKey} from "@/lib/api/internal-auth";
+import type {McpContext} from "@/lib/api/internal-auth";
 import {internalGetBackupStatus, internalListAgents} from "@/lib/api/internal-queries";
-import {resolveOrgForTool} from "@/mcp/org-scope";
+import {resolveOrgScope} from "@/mcp/org-scope";
 
-export function registerStatusResource(
-    server: McpServer,
-    apiKey: Pick<VerifiedApiKey, "organizationId"> | null
-): void {
+export function registerStatusResource(server: McpServer, ctx: McpContext | null): void {
     server.registerResource(
         "portabase_status",
         "portabase://status",
@@ -16,8 +13,8 @@ export function registerStatusResource(
             mimeType: "application/json",
         },
         async (uri) => {
-            const orgId = resolveOrgForTool(apiKey, null);
-            const agents = await internalListAgents(orgId, false);
+            const scope = resolveOrgScope(ctx, null);
+            const agents = await internalListAgents(scope.orgIds, false);
             let online = 0;
             let offline = 0;
             for (const row of agents) {
@@ -28,7 +25,7 @@ export function registerStatusResource(
                     offline++;
                 }
             }
-            const health = await internalGetBackupStatus(orgId);
+            const health = await internalGetBackupStatus(scope.orgIds);
             const snapshot = {
                 agents_total: agents.length,
                 agents_online: online,

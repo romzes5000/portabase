@@ -1,14 +1,11 @@
 import type {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import type {VerifiedApiKey} from "@/lib/api/internal-auth";
+import type {McpContext} from "@/lib/api/internal-auth";
 import {internalListOrganizations} from "@/lib/api/internal-queries";
 import {toolErr, toolOk} from "@/mcp/json";
-import {resolveOrgForTool} from "@/mcp/org-scope";
+import {resolveOrgScope} from "@/mcp/org-scope";
 
-export function registerListOrganizations(
-    server: McpServer,
-    apiKey: Pick<VerifiedApiKey, "organizationId"> | null
-): void {
+export function registerListOrganizations(server: McpServer, ctx: McpContext | null): void {
     server.registerTool(
         "list_organizations",
         {
@@ -18,8 +15,8 @@ export function registerListOrganizations(
         },
         async () => {
             try {
-                const orgId = resolveOrgForTool(apiKey, null);
-                const rows = await internalListOrganizations(orgId);
+                const scope = resolveOrgScope(ctx, null);
+                const rows = await internalListOrganizations(scope.orgIds);
                 return toolOk({ok: true, organizations: rows});
             } catch (e) {
                 return toolErr("list_organizations", e);

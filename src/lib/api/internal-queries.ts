@@ -2,7 +2,6 @@ import {db} from "@/db";
 import {agent} from "@/db/schema/08_agent";
 import {database} from "@/db/schema/07_database";
 import {project} from "@/db/schema/06_project";
-import type {VerifiedApiKey} from "@/lib/api/internal-auth";
 import {redactStorageConfig} from "@/lib/api/redact-storage-config";
 import {and, asc, eq, inArray, isNull, sql} from "drizzle-orm";
 
@@ -16,22 +15,31 @@ function agentOnlineThresholdMs(): number {
     return (m > 0 ? m : 15) * 60 * 1000;
 }
 
-/** Effective org filter: scoped API key wins over query param. */
-export function resolveOrganizationId(
-    key: VerifiedApiKey,
-    queryOrganizationId: string | null
-): string | null {
-    if (key.organizationId) {
-        return key.organizationId;
+/** SQL fragment: filter by org ids, or no filter (null), or impossible (empty array). */
+function sqlOrgInProject(orgIds: string[] | null, projectAlias = "p"): ReturnType<typeof sql> {
+    if (orgIds === null) {
+        return sql``;
     }
-    return queryOrganizationId;
+    if (orgIds.length === 0) {
+        return sql`AND false`;
+    }
+    return sql`AND ${sql.raw(projectAlias)}.organization_id IN (${sql.join(
+        orgIds.map((id) => sql`${id}`),
+        sql`, `
+    )})`;
 }
 
-async function agentIdsForOrganization(orgId: string): Promise<string[]> {
+async function agentIdsForOrganizations(orgIds: string[] | null): Promise<string[] | undefined> {
+    if (orgIds === null) {
+        return undefined;
+    }
+    if (orgIds.length === 0) {
+        return [];
+    }
     const projects = await db
         .select({id: project.id})
         .from(project)
-        .where(and(eq(project.organizationId, orgId), isNull(project.deletedAt)));
+        .where(and(inArray(project.organizationId, orgIds), isNull(project.deletedAt)));
     const pids = projects.map((p) => p.id);
     if (pids.length === 0) {
         return [];
@@ -44,13 +52,13 @@ async function agentIdsForOrganization(orgId: string): Promise<string[]> {
 }
 
 export async function internalListAgents(
-    orgId: string | null,
+    orgIds: string[] | null,
     includeArchived: boolean
 ): Promise<Record<string, unknown>[]> {
     const thresholdMs = agentOnlineThresholdMs();
+    const ids = await agentIdsForOrganizations(orgIds);
     let agentIdFilter: string[] | undefined;
-    if (orgId) {
-        const ids = await agentIdsForOrganization(orgId);
+    if (ids !== undefined) {
         if (ids.length === 0) {
             return [];
         }
@@ -81,11 +89,11 @@ export async function internalListAgents(
 }
 
 export async function internalListDatabases(
-    orgId: string | null,
+    orgIds: string[] | null,
     agentId: string,
     projectId: string
 ): Promise<Record<string, unknown>[]> {
-    const orgClause = orgId ? sql`AND p.organization_id = ${orgId}::uuid` : sql``;
+    const orgClause = sqlOrgInProject(orgIds, "p");
     const agentClause = agentId ? sql`AND d.agent_id = ${agentId}::uuid` : sql``;
     const projectClause = projectId ? sql`AND d.project_id = ${projectId}::uuid` : sql``;
     const result = await db.execute(sql`
@@ -117,7 +125,7 @@ export async function internalListDatabases(
 }
 
 export async function internalListBackups(
-    orgId: string | null,
+    orgIds: string[] | null,
     databaseId: string,
     status: string,
     limit: number,
@@ -129,9 +137,17 @@ export async function internalListBackups(
     if (offset < 0) {
         offset = 0;
     }
-    const orgClause = orgId
-        ? sql`AND EXISTS (SELECT 1 FROM databases d2 JOIN projects p ON p.id = d2.project_id WHERE d2.id = b.database_id AND p.organization_id = ${orgId}::uuid AND d2.deleted_at IS NULL AND p.deleted_at IS NULL)`
-        : sql``;
+    let orgClause: ReturnType<typeof sql>;
+    if (orgIds === null) {
+        orgClause = sql``;
+    } else if (orgIds.length === 0) {
+        orgClause = sql`AND false`;
+    } else {
+        orgClause = sql`AND EXISTS (SELECT 1 FROM databases d2 JOIN projects p ON p.id = d2.project_id WHERE d2.id = b.database_id AND p.organization_id IN (${sql.join(
+            orgIds.map((id) => sql`${id}`),
+            sql`, `
+        )}) AND d2.deleted_at IS NULL AND p.deleted_at IS NULL)`;
+    }
     const dbClause = databaseId ? sql`AND b.database_id = ${databaseId}::uuid` : sql``;
     const statusClause = status ? sql`AND b.status::text = ${status}` : sql``;
     const result = await db.execute(sql`
@@ -154,8 +170,8 @@ export async function internalListBackups(
     return result.rows as Record<string, unknown>[];
 }
 
-export async function internalListProjects(orgId: string | null): Promise<Record<string, unknown>[]> {
-    const orgClause = orgId ? sql`AND p.organization_id = ${orgId}::uuid` : sql``;
+export async function internalListProjects(orgIds: string[] | null): Promise<Record<string, unknown>[]> {
+    const orgClause = sqlOrgInProject(orgIds, "p");
     const result = await db.execute(sql`
     SELECT p.id::text,
            p.slug,
@@ -173,27 +189,9 @@ export async function internalListProjects(orgId: string | null): Promise<Record
     return result.rows as Record<string, unknown>[];
 }
 
-export async function internalListOrganizations(orgId: string | null): Promise<Record<string, unknown>[]> {
-    if (orgId) {
+export async function internalListOrganizations(orgIds: string[] | null): Promise<Record<string, unknown>[]> {
+    if (orgIds === null) {
         const result = await db.execute(sql`
-      SELECT o.id::text,
-             o.slug,
-             o.name,
-             o.logo,
-             o.metadata,
-             o.created_at,
-             o.updated_at,
-             (SELECT COUNT(*)::int FROM projects p WHERE p.organization_id = o.id AND p.deleted_at IS NULL) AS project_count,
-             (SELECT COUNT(*)::int FROM databases d
-                INNER JOIN projects p ON p.id = d.project_id AND p.deleted_at IS NULL
-                WHERE p.organization_id = o.id AND d.deleted_at IS NULL) AS database_count
-      FROM organization o
-      WHERE o.deleted_at IS NULL AND o.id = ${orgId}::uuid
-      ORDER BY o.name
-    `);
-        return result.rows as Record<string, unknown>[];
-    }
-    const result = await db.execute(sql`
     SELECT o.id::text,
            o.slug,
            o.name,
@@ -209,14 +207,55 @@ export async function internalListOrganizations(orgId: string | null): Promise<R
     WHERE o.deleted_at IS NULL
     ORDER BY o.name
   `);
+        return result.rows as Record<string, unknown>[];
+    }
+    if (orgIds.length === 0) {
+        return [];
+    }
+    const result = await db.execute(sql`
+      SELECT o.id::text,
+             o.slug,
+             o.name,
+             o.logo,
+             o.metadata,
+             o.created_at,
+             o.updated_at,
+             (SELECT COUNT(*)::int FROM projects p WHERE p.organization_id = o.id AND p.deleted_at IS NULL) AS project_count,
+             (SELECT COUNT(*)::int FROM databases d
+                INNER JOIN projects p ON p.id = d.project_id AND p.deleted_at IS NULL
+                WHERE p.organization_id = o.id AND d.deleted_at IS NULL) AS database_count
+      FROM organization o
+      WHERE o.deleted_at IS NULL AND o.id IN (${sql.join(
+          orgIds.map((id) => sql`${id}`),
+          sql`, `
+      )})
+      ORDER BY o.name
+    `);
     return result.rows as Record<string, unknown>[];
 }
 
-export async function internalGetBackupStatus(orgId: string | null): Promise<Record<string, unknown>> {
+export async function internalGetBackupStatus(orgIds: string[] | null): Promise<Record<string, unknown>> {
     const staleH = staleBackupHours();
-    const orgFilter = orgId
-        ? sql`AND EXISTS (SELECT 1 FROM projects p WHERE p.id = d.project_id AND p.organization_id = ${orgId}::uuid AND p.deleted_at IS NULL)`
-        : sql``;
+    let orgFilter: ReturnType<typeof sql>;
+    let recentOrgFilter: ReturnType<typeof sql>;
+    if (orgIds === null) {
+        orgFilter = sql``;
+        recentOrgFilter = sql``;
+    } else if (orgIds.length === 0) {
+        orgFilter = sql`AND false`;
+        recentOrgFilter = sql`AND false`;
+    } else {
+        const inList = sql.join(
+            orgIds.map((id) => sql`${id}`),
+            sql`, `
+        );
+        const inListRecent = sql.join(
+            orgIds.map((id) => sql`${id}`),
+            sql`, `
+        );
+        orgFilter = sql`AND EXISTS (SELECT 1 FROM projects p WHERE p.id = d.project_id AND p.organization_id IN (${inList}) AND p.deleted_at IS NULL)`;
+        recentOrgFilter = sql`AND EXISTS (SELECT 1 FROM projects p WHERE p.id = d.project_id AND p.organization_id IN (${inListRecent}) AND p.deleted_at IS NULL)`;
+    }
     const row = await db.execute(sql`
     WITH db AS (
       SELECT d.id, d.name,
@@ -238,7 +277,7 @@ export async function internalGetBackupStatus(orgId: string | null): Promise<Rec
     JOIN databases d ON d.id = b.database_id
     WHERE b.created_at > now() - interval '24 hours'
       AND b.deleted_at IS NULL AND d.deleted_at IS NULL
-      ${orgId ? sql`AND EXISTS (SELECT 1 FROM projects p WHERE p.id = d.project_id AND p.organization_id = ${orgId}::uuid AND p.deleted_at IS NULL)` : sql``}
+      ${recentOrgFilter}
   `);
     const recent24 = Number((recent.rows[0] as {c?: number})?.c ?? 0);
     return {
@@ -250,10 +289,23 @@ export async function internalGetBackupStatus(orgId: string | null): Promise<Rec
     };
 }
 
-export async function internalListStorageChannels(orgId: string | null): Promise<Record<string, unknown>[]> {
-    const orgClause = orgId
-        ? sql`AND (sc.organization_id = ${orgId}::uuid OR EXISTS (SELECT 1 FROM organization_storage_channels osc WHERE osc.storage_channel_id = sc.id AND osc.organization_id = ${orgId}::uuid))`
-        : sql``;
+export async function internalListStorageChannels(orgIds: string[] | null): Promise<Record<string, unknown>[]> {
+    let orgClause: ReturnType<typeof sql>;
+    if (orgIds === null) {
+        orgClause = sql``;
+    } else if (orgIds.length === 0) {
+        orgClause = sql`AND false`;
+    } else {
+        const inListSc = sql.join(
+            orgIds.map((id) => sql`${id}`),
+            sql`, `
+        );
+        const inListOsc = sql.join(
+            orgIds.map((id) => sql`${id}`),
+            sql`, `
+        );
+        orgClause = sql`AND (sc.organization_id IN (${inListSc}) OR EXISTS (SELECT 1 FROM organization_storage_channels osc WHERE osc.storage_channel_id = sc.id AND osc.organization_id IN (${inListOsc})))`;
+    }
     const result = await db.execute(sql`
     SELECT sc.id::text,
            COALESCE(sc.organization_id::text, '') AS organization_id,

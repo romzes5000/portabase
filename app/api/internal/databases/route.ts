@@ -1,5 +1,6 @@
 import {verifyApiKeyRequest} from "@/lib/api/internal-auth";
-import {internalListDatabases, resolveOrganizationId} from "@/lib/api/internal-queries";
+import {internalListDatabases} from "@/lib/api/internal-queries";
+import {loadOrgScopeForApiKey, OrgAccessDeniedError} from "@/mcp/org-scope";
 
 export async function GET(request: Request) {
     const auth = await verifyApiKeyRequest(request, "read");
@@ -9,9 +10,20 @@ export async function GET(request: Request) {
     const url = new URL(request.url);
     const agentId = url.searchParams.get("agent_id") ?? "";
     const projectId = url.searchParams.get("project_id") ?? "";
-    const orgId = resolveOrganizationId(auth.key, null);
+    let scope;
     try {
-        const data = await internalListDatabases(orgId, agentId, projectId);
+        scope = await loadOrgScopeForApiKey(auth.key, url.searchParams.get("organization_id"));
+    } catch (e) {
+        if (e instanceof OrgAccessDeniedError) {
+            return Response.json({ok: false, error: e.message}, {status: 403});
+        }
+        return Response.json(
+            {ok: false, error: e instanceof Error ? e.message : "Internal error"},
+            {status: 500}
+        );
+    }
+    try {
+        const data = await internalListDatabases(scope.orgIds, agentId, projectId);
         return Response.json({ok: true, data});
     } catch (e) {
         return Response.json(

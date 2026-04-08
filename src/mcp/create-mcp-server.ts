@@ -1,20 +1,18 @@
 import {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 
-import type {VerifiedApiKey} from "@/lib/api/internal-auth";
+import type {McpContext} from "@/lib/api/internal-auth";
 import {registerStatusResource} from "@/mcp/resources/status";
 import {registerAllTools} from "@/mcp/tools";
 
 /**
- * @param apiKey — null для stdio (полный доступ); для HTTP — проверенный ключ из `verifyApiKeyRequest`.
+ * @param ctx — null для stdio (полный доступ); для HTTP — контекст из `loadMcpContext` после `verifyApiKeyRequest`.
  */
-export function createPortabaseMcpServer(
-    apiKey: Pick<VerifiedApiKey, "organizationId"> | null
-): McpServer {
+export function createPortabaseMcpServer(ctx: McpContext | null): McpServer {
     const server = new McpServer({
         name: "portabase-mcp",
         version: "0.2.0",
     });
-    registerAllTools(server, apiKey);
-    registerStatusResource(server, apiKey);
+    registerAllTools(server, ctx);
+    registerStatusResource(server, ctx);
     return server;
 }

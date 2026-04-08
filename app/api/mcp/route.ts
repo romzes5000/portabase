@@ -1,6 +1,6 @@
 import {WebStandardStreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
-import {verifyApiKeyRequest} from "@/lib/api/internal-auth";
+import {loadMcpContext, verifyApiKeyRequest} from "@/lib/api/internal-auth";
 import {createPortabaseMcpServer} from "@/mcp/create-mcp-server";
 
 export const runtime = "nodejs";
@@ -21,10 +21,17 @@ async function handleMcp(request: Request): Promise<Response> {
     if (!auth.ok) {
         return auth.response;
     }
+    let mcpCtx;
+    try {
+        mcpCtx = await loadMcpContext(auth.key);
+    } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e);
+        return Response.json({ok: false, error: msg}, {status: 500});
+    }
     const transport = new WebStandardStreamableHTTPServerTransport({
         sessionIdGenerator: undefined,
     });
-    const server = createPortabaseMcpServer(auth.key);
+    const server = createPortabaseMcpServer(mcpCtx);
     await server.connect(transport);
     const res = await transport.handleRequest(request);
 

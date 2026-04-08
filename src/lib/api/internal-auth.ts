@@ -2,8 +2,34 @@ import {createHash} from "crypto";
 import {and, eq, isNull} from "drizzle-orm";
 import {db} from "@/db";
 import {apiKey} from "@/db/schema/16_api-key";
+import {member} from "@/db/schema/04_member";
 
 export type VerifiedApiKey = typeof apiKey.$inferSelect;
+
+/** User-scoped context for MCP / internal API (memberships from member table). */
+export type McpContext = {
+    userId: string;
+    allowedOrgIds: string[];
+    memberships: Array<{organizationId: string; role: string}>;
+};
+
+/**
+ * Loads organization memberships for the API key owner. Requires createdById.
+ */
+export async function loadMcpContext(key: VerifiedApiKey): Promise<McpContext> {
+    const userId = key.createdById;
+    if (!userId) {
+        throw new Error("API key has no owner (createdById is null). Re-create the key.");
+    }
+    const rows = await db.query.member.findMany({
+        where: and(eq(member.userId, userId), isNull(member.deletedAt)),
+    });
+    return {
+        userId,
+        allowedOrgIds: rows.map((r) => r.organizationId),
+        memberships: rows.map((r) => ({organizationId: r.organizationId, role: r.role})),
+    };
+}
 
 /**
  * Validates Bearer token against api_keys.key_hash (SHA-256 hex of plaintext).

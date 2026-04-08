@@ -1,15 +1,12 @@
 import type {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {z} from "zod";
 
-import type {VerifiedApiKey} from "@/lib/api/internal-auth";
+import type {McpContext} from "@/lib/api/internal-auth";
 import {internalListAgents} from "@/lib/api/internal-queries";
 import {toolErr, toolOk} from "@/mcp/json";
-import {resolveOrgForTool} from "@/mcp/org-scope";
+import {resolveOrgScope} from "@/mcp/org-scope";
 
-export function registerListAgents(
-    server: McpServer,
-    apiKey: Pick<VerifiedApiKey, "organizationId"> | null
-): void {
+export function registerListAgents(server: McpServer, ctx: McpContext | null): void {
     server.registerTool(
         "list_agents",
         {
@@ -20,13 +17,18 @@ export function registerListAgents(
                     .boolean()
                     .optional()
                     .describe("Include archived agents (default false)"),
+                organization_id: z
+                    .string()
+                    .optional()
+                    .describe("Organization UUID; omit for agents across all accessible organizations"),
             }),
             annotations: {readOnlyHint: true},
         },
         async (args) => {
             try {
-                const orgId = resolveOrgForTool(apiKey, null);
-                const rows = await internalListAgents(orgId, args.include_archived ?? false);
+                const queryOrg = args.organization_id?.trim() || null;
+                const scope = resolveOrgScope(ctx, queryOrg);
+                const rows = await internalListAgents(scope.orgIds, args.include_archived ?? false);
                 return toolOk({ok: true, agents: rows});
             } catch (e) {
                 return toolErr("list_agents", e);

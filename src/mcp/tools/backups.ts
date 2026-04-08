@@ -1,20 +1,21 @@
 import type {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {z} from "zod";
 
-import type {VerifiedApiKey} from "@/lib/api/internal-auth";
+import type {McpContext} from "@/lib/api/internal-auth";
 import {internalListBackups} from "@/lib/api/internal-queries";
 import {toolErr, toolOk} from "@/mcp/json";
-import {resolveOrgForTool} from "@/mcp/org-scope";
+import {resolveOrgScope} from "@/mcp/org-scope";
 
-export function registerListBackups(
-    server: McpServer,
-    apiKey: Pick<VerifiedApiKey, "organizationId"> | null
-): void {
+export function registerListBackups(server: McpServer, ctx: McpContext | null): void {
     server.registerTool(
         "list_backups",
         {
             description: "List backup rows with pagination.",
             inputSchema: z.object({
+                organization_id: z
+                    .string()
+                    .optional()
+                    .describe("Organization UUID; omit for backups across all accessible organizations"),
                 database_id: z.string().optional().describe("Filter by database UUID"),
                 status: z
                     .string()
@@ -27,11 +28,12 @@ export function registerListBackups(
         },
         async (args) => {
             try {
-                const orgId = resolveOrgForTool(apiKey, null);
+                const queryOrg = args.organization_id?.trim() || null;
+                const scope = resolveOrgScope(ctx, queryOrg);
                 const limit = args.limit ?? 100;
                 const offset = args.offset ?? 0;
                 const rows = await internalListBackups(
-                    orgId,
+                    scope.orgIds,
                     args.database_id ?? "",
                     args.status ?? "",
                     limit,
