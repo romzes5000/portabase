@@ -50,17 +50,22 @@ BuildKit-кэш пишется в **GHCR** под тегом **`buildcache`** (�
 
 Опционально: `FORK_READ_TOKEN` в workflow checkout — только если форк приложения станет приватным.
 
+### SSH: хост и ключ
+
+- **`DEPLOY_HOST`**: self-hosted runner в сети Oxem **NetBird** обычно ходит на сервер по **mesh-IP** (например `100.72.173.25`). Публичный IP (`159.194.…`) с runner может быть закрыт firewall / не отвечать по SSH — тогда в логах не `publickey`, а `Connection closed` или таймаут.
+- **`DEPLOY_SSH_KEY`**: приватный ключ обязан совпадать с одной из строк в `deploy:~/.ssh/authorized_keys`. Иначе: `ssh: unable to authenticate, attempted methods [none publickey]`. Добавить ключ: с рабочей машины, где уже есть доступ, выполнить `ssh-copy-id -i ~/.ssh/id_ed25519.pub deploy@<host>` или вручную дописать **публичный** ключ в `authorized_keys`.
+
 На сервере compose должен ссылаться на `ghcr.io/oxem-studio/portabase:${IMAGE_TAG}` — см. [server/docker-compose.ghcr.yml](server/docker-compose.ghcr.yml).
 
 ### Приватный пакет GHCR
 
-Если образ в GHCR **не public**, на сервере перед `docker pull` нужен `docker login ghcr.io`. Добавьте на сервер в cron или вручную один раз:
+Если образ в GHCR **не public**, на сервере перед `docker pull` нужен `docker login ghcr.io` с токеном, у которого есть **`read:packages`** (и доступ к org-пакету). Иначе после `Login Succeeded` всё равно будет **`403 Forbidden`** на `docker pull`.
 
-```bash
-echo "$GHCR_PAT" | docker login ghcr.io -u USERNAME --password-stdin
-```
+Проверка: `echo "$PAT" | docker login ghcr.io -u USERNAME --password-stdin` и затем `docker pull ghcr.io/oxem-studio/portabase:<tag>`.
 
-либо расширьте шаг `script` в workflow (храните PAT в `secrets.DEPLOY_GHCR_TOKEN` и не логируйте его).
+Классический PAT: scope **read:packages** (и при необходимости **read:org**). Либо в настройках пакета на GitHub сделайте образ **public**, если допустимо.
+
+Секрет **`GHCR_PULL_TOKEN`** в `portabase-deploy` должен содержать такой PAT (или обновите через `gh auth token` после `gh auth refresh -s read:packages`).
 
 ## Деплой на сервер
 
