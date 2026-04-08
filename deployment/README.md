@@ -19,6 +19,12 @@
 
 Если runner в org имеет **дополнительные метки** и не подхватывает job с одним `self-hosted`, в [build-and-deploy.yml](.github/workflows/build-and-deploy.yml) замените `runs-on` на `runs-on: [self-hosted, <ваша-метка>]`.
 
+## Кэш сборки (GHA)
+
+В workflow: `cache-from` / `cache-to: type=gha,mode=max` — максимальный reuse слоёв Docker. Если узкое место — **долгий upload кэша** в Actions, можно временно переключить на `mode=min` в [build-and-deploy.yml](.github/workflows/build-and-deploy.yml) (меньше объёма записи, чуть ниже hit-rate).
+
+На **self-hosted** runner с постоянным диском дополнительно можно настроить локальный BuildKit cache (`type=local`) в конфигурации хоста — слои переживут очистку GHA cache.
+
 ## Секреты (GitHub → Settings → Secrets)
 
 | Секрет | Назначение |

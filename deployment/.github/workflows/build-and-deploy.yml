@@ -24,12 +24,19 @@ on:
         type: boolean
         default: true
 
+concurrency:
+  group: portabase-deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Рекомендация GitHub: JS actions на Node 24 до дефолта на runner
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   FORK_REPO: romzes5000/portabase
 
 jobs:
   build:
     runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
+    timeout-minutes: 60
     permissions:
       contents: read
       packages: write
@@ -45,11 +52,12 @@ jobs:
           echo "image_base=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/portabase" >> "$GITHUB_OUTPUT"
 
       - name: Checkout application source
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           repository: ${{ env.FORK_REPO }}
           ref: ${{ inputs.ref }}
-          fetch-depth: 0
+          fetch-depth: 1
+          fetch-tags: true
 
       - name: Set image tag
         id: tag
@@ -84,6 +92,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # mode=max — максимальный hit-rate GHA cache; при узком месте на upload — см. deployment/README.md
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -94,6 +103,8 @@ jobs:
             ${{ steps.ghcr.outputs.image_base }}:${{ steps.tag.outputs.tag }}
           target: prod
           platforms: linux/amd64
+          provenance: false
+          sbom: false
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -101,6 +112,7 @@ jobs:
     needs: build
     if: ${{ github.event.inputs.deploy_to_server == 'true' && needs.build.result == 'success' }}
     runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
+    timeout-minutes: 10
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
