@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       ref:
-        description: "Тег или полный SHA на romzes5000/portabase (исходный форк)"
+        description: "Ветка, тег или полный SHA на romzes5000/portabase (для деплоя Oxem: oxem/deploy)"
         required: true
         type: string
       image_tag:
