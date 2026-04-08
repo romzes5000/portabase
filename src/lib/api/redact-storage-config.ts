@@ -7,7 +7,7 @@ export function redactStorageConfig(raw: unknown): Record<string, unknown> {
         return {};
     }
     const obj = raw as Record<string, unknown>;
-    const out: Record<string, unknown> = {...obj};
+    const out = structuredClone(obj) as Record<string, unknown>;
     const redactNested = (m: Record<string, unknown>) => {
         for (const k of Object.keys(m)) {
             if (storageConfigKeySensitive(k)) {
