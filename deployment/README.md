@@ -25,6 +25,19 @@
 
 На **self-hosted** runner с постоянным диском дополнительно можно настроить локальный BuildKit cache (`type=local`) в конфигурации хоста — слои переживут очистку GHA cache.
 
+### Что уже сделано в workflow и образе
+
+| Область | Изменение |
+|--------|-----------|
+| Checkout | `fetch-depth: 1` + `fetch-tags: true` — меньше трафика Git, теги в `ref` по-прежнему работают |
+| Параллельные запуски | `concurrency` + `cancel-in-progress` — новый dispatch отменяет предыдущий на ту же ref |
+| Таймауты | `build`: 60 мин, `deploy`: 10 мин |
+| Node для JS actions | `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` |
+| Actions | `actions/checkout@v6`; build-push: `provenance: false`, `sbom: false` |
+| Dockerfile (в форке приложения) | tusd с [GitHub Releases](https://github.com/tus/tusd/releases) вместо `git clone` + `go build`; BuildKit `--mount=type=cache` для pnpm store и `.next/cache` |
+
+Сборка в CI использует **тот же** [`docker/dockerfile/Dockerfile`](https://github.com/romzes5000/portabase/blob/main/docker/dockerfile/Dockerfile) из checkout’а форка по полю `ref`.
+
 ## Секреты (GitHub → Settings → Secrets)
 
 | Секрет | Назначение |
