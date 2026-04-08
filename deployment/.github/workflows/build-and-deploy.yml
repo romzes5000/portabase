@@ -1,5 +1,4 @@
-# Скопируйте этот файл в отдельный репозиторий deploy (не в форк portabase).
-# Настройте secrets и при необходимости замените шаги push/deploy.
+# Репозиторий portabase-deploy: сборка образа из форка + опциональный выкат по SSH.
 
 name: Build Portabase from fork
 
@@ -14,6 +13,11 @@ on:
         description: "Тег образа (по умолчанию = короткий SHA)"
         required: false
         type: string
+      deploy_to_server:
+        description: "После сборки выкатить на сервер по SSH (нужны secrets DEPLOY_*)"
+        required: false
+        type: boolean
+        default: false
 
 env:
   FORK_REPO: romzes5000/portabase
@@ -25,6 +29,10 @@ jobs:
     permissions:
       contents: read
       packages: write
+
+    outputs:
+      image_full: ${{ steps.image_ref.outputs.full }}
+      tag: ${{ steps.tag.outputs.tag }}
 
     steps:
       - name: Checkout application source
@@ -49,6 +57,13 @@ jobs:
             echo "tag=${INPUT_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set full image ref
+        id: image_ref
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+        run: |
+          echo "full=${{ env.IMAGE_NAME }}:${TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
@@ -71,6 +86,25 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Раскомментируйте и настройте выкат (SSH, kubectl, ansible):
-      # - name: Deploy
-      #   run: echo "Add deploy steps"
+  deploy:
+    needs: build
+    if: ${{ github.event.inputs.deploy_to_server == 'true' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_FULL: ${{ needs.build.outputs.image_full }}
+          TAG: ${{ needs.build.outputs.tag }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          envs: IMAGE_FULL,TAG
+          script: |
+            set -euo pipefail
+            docker pull "${IMAGE_FULL}"
+            install -d /opt/portabase
+            echo "IMAGE_TAG=${TAG}" > /opt/portabase/.env.deploy
+            docker compose --env-file /opt/portabase/.env.deploy -f /opt/portabase/docker-compose.yml up -d --remove-orphans

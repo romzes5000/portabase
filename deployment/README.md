@@ -1,30 +1,67 @@
 # portabase-deploy — CI/CD для форка Portabase
 
-Репозиторий **[github.com/romzes5000/portabase-deploy](https://github.com/romzes5000/portabase-deploy)** собирает Docker-образ из [форка приложения](https://github.com/romzes5000/portabase) по фиксированному **ref** (тег или SHA) и публикует в GHCR.
+Репозиторий **[romzes5000/portabase-deploy](https://github.com/romzes5000/portabase-deploy)** (приватный): сборка Docker-образа из [форка](https://github.com/romzes5000/portabase) и опциональный **выкат по SSH**.
 
-## Возможности
-
-- checkout `romzes5000/portabase` на заданный `ref`;
-- сборка `./docker/dockerfile/Dockerfile`, target `prod`;
-- push в `ghcr.io/<owner>/portabase:<tag>`.
-
-## Запуск
+## Сборка (GHCR)
 
 1. **Actions** → **Build Portabase from fork** → **Run workflow**.
-2. Укажите `ref`: полный **SHA** (40 hex) или **имя тега** на форке.
-3. Опционально `image_tag` — иначе для SHA берётся короткий префикс, для тега — имя тега.
+2. `ref` — полный **SHA** или **тег** на форке.
+3. `image_tag` — опционально; иначе для SHA берётся короткий префикс.
+4. `deploy_to_server` — включите только если настроены секреты деплоя (см. ниже).
 
-Политика веток и прод-рефов: [fork-workflow в репозитории portabase](https://github.com/romzes5000/portabase/blob/main/docs/fork-workflow.md).
+Образ: `ghcr.io/romzes5000/portabase:<tag>`.
 
-## Секреты
+Политика веток: [fork-workflow в portabase](https://github.com/romzes5000/portabase/blob/main/docs/fork-workflow.md).
 
-| Секрет | Когда нужен |
-|--------|-------------|
-| (нет) | Публичный форк — checkout без токена. |
-| `FORK_READ_TOKEN` | Приватный форк: fine-grained PAT, `Contents: Read` на `romzes5000/portabase`. Добавьте в workflow шаг checkout: `token: ${{ secrets.FORK_READ_TOKEN }}`. |
+## Секреты (GitHub → Settings → Secrets)
 
-Образ в GHCR: убедитесь, что у пакета выставлены права **чтения** для нужных сред (или пакет public).
+| Секрет | Назначение |
+|--------|------------|
+| `DEPLOY_HOST` | IP или hostname сервера |
+| `DEPLOY_USER` | SSH-пользователь (например `deploy`) |
+| `DEPLOY_SSH_KEY` | Приватный ключ (PEM), **без** passphrase для CI |
 
-## Выкат
+Опционально: `FORK_READ_TOKEN` в workflow checkout — только если форк приложения станет приватным.
 
-Шаги SSH / Ansible / API добавляйте в [`.github/workflows/build-and-deploy.yml`](.github/workflows/build-and-deploy.yml) после сборки.
+### Приватный пакет GHCR
+
+Если образ в GHCR **не public**, на сервере перед `docker pull` нужен `docker login ghcr.io`. Добавьте на сервер в cron или вручную один раз:
+
+```bash
+echo "$GHCR_PAT" | docker login ghcr.io -u USERNAME --password-stdin
+```
+
+либо расширьте шаг `script` в workflow (храните PAT в `secrets.DEPLOY_GHCR_TOKEN` и не логируйте его).
+
+## Деплой на сервер
+
+CI после `docker pull` выполняет:
+
+```bash
+echo "IMAGE_TAG=<тот же тег что в GHCR>" > /opt/portabase/.env.deploy
+docker compose --env-file /opt/portabase/.env.deploy -f /opt/portabase/docker-compose.yml up -d
+```
+
+**Подготовка один раз:**
+
+1. На сервере: `sudo mkdir -p /opt/portabase`
+2. Положите compose-файл, например из [server/docker-compose.example.yml](server/docker-compose.example.yml):
+
+   ```bash
+   sudo cp docker-compose.example.yml /opt/portabase/docker-compose.yml
+   # отредактируйте порты, volumes, env
+   ```
+
+3. В `docker-compose.yml` образ должен быть в виде  
+   `image: ghcr.io/romzes5000/portabase:${IMAGE_TAG}`  
+   — так тег из `.env.deploy` совпадает с тем, что собрал CI.
+
+4. Убедитесь, что пользователь SSH входит в группу `docker` **или** используйте root (не рекомендуется; лучше `docker` + `usermod -aG docker deploy`).
+
+Путь `/opt/portabase` и имя файла зашиты в [`.github/workflows/build-and-deploy.yml`](.github/workflows/build-and-deploy.yml); при другом пути измените workflow.
+
+## Локальная отладка pull
+
+```bash
+docker pull ghcr.io/romzes5000/portabase:<tag>
+```
