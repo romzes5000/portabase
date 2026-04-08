@@ -46,7 +46,7 @@ BuildKit-кэш пишется в **GHCR** под тегом **`buildcache`** (�
 | `DEPLOY_HOST` | IP или hostname сервера |
 | `DEPLOY_USER` | SSH-пользователь (например `deploy`) |
 | `DEPLOY_SSH_KEY` | Приватный ключ (PEM), **без** passphrase для CI |
-| `GHCR_PULL_TOKEN` | (рекомендуется) PAT или `gh auth token` для `docker login ghcr.io` на сервере, если пакет приватный |
+| `GHCR_PULL_TOKEN` | Не обязателен: job **deploy** передаёт на сервер **`GITHUB_TOKEN`** (`packages: read`) — тем же токеном, что пушит образ в **build**. Отдельный PAT нужен только если уберёте эту схему или потребуется внешний pull |
 
 Опционально: `FORK_READ_TOKEN` в workflow checkout — только если форк приложения станет приватным.
 
@@ -59,13 +59,11 @@ BuildKit-кэш пишется в **GHCR** под тегом **`buildcache`** (�
 
 ### Приватный пакет GHCR
 
-Если образ в GHCR **не public**, на сервере перед `docker pull` нужен `docker login ghcr.io` с токеном, у которого есть **`read:packages`** (и доступ к org-пакету). Иначе после `Login Succeeded` всё равно будет **`403 Forbidden`** на `docker pull`.
+Workflow сам логинится на `ghcr.io` на сервере через **`GITHUB_TOKEN`** job’а deploy (в workflow задано `permissions: packages: read`). Это тот же org/repo-токен, что и у шага push в **build**, поэтому отдельный PAT для pull обычно **не нужен**.
 
-Проверка: `echo "$PAT" | docker login ghcr.io -u USERNAME --password-stdin` и затем `docker pull ghcr.io/oxem-studio/portabase:<tag>`.
+Если по какой-то причине используете **другой** токен/PAT и видите **`403 Forbidden`** на `docker pull` при успешном `docker login`: у токена должны быть **`read:packages`** и доступ к org-пакету; либо сделайте пакет **public** в настройках GitHub Packages.
 
-Классический PAT: scope **read:packages** (и при необходимости **read:org**). Либо в настройках пакета на GitHub сделайте образ **public**, если допустимо.
-
-Секрет **`GHCR_PULL_TOKEN`** в `portabase-deploy` должен содержать такой PAT (или обновите через `gh auth token` после `gh auth refresh -s read:packages`).
+Проверка вручную: `echo "$PAT" | docker login ghcr.io -u USERNAME --password-stdin` и затем `docker pull ghcr.io/oxem-studio/portabase:<tag>`.
 
 ## Деплой на сервер
 

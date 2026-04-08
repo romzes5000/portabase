@@ -114,13 +114,18 @@ jobs:
     if: ${{ github.event.inputs.deploy_to_server == 'true' && needs.build.result == 'success' }}
     runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     timeout-minutes: 10
+    # Тот же GITHUB_TOKEN, что пушит образ в build — с read:packages хватает на docker pull на сервере
+    # без отдельного GHCR_PULL_TOKEN (иначе 403, если PAT без read:packages).
+    permissions:
+      contents: read
+      packages: read
     steps:
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.2.0
         env:
           IMAGE_FULL: ${{ needs.build.outputs.image_full }}
           TAG: ${{ needs.build.outputs.tag }}
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
+          GHCR_PULL_TOKEN: ${{ github.token }}
           GHCR_LOGIN_USER: ${{ github.actor }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
