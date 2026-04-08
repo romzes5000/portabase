@@ -179,8 +179,7 @@ export async function internalListProjects(orgIds: string[] | null): Promise<Rec
            p.is_archived,
            p.organization_id::text,
            p.created_at,
-           (SELECT COUNT(*)::int FROM databases d WHERE d.project_id = p.id AND d.deleted_at IS NULL) AS database_count,
-           (SELECT COUNT(DISTINCT d.agent_id)::int FROM databases d WHERE d.project_id = p.id AND d.deleted_at IS NULL) AS agent_count
+           (SELECT COUNT(*)::int FROM databases d WHERE d.project_id = p.id AND d.deleted_at IS NULL) AS database_count
     FROM projects p
     WHERE p.deleted_at IS NULL
     ${orgClause}
