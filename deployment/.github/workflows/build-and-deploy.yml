@@ -114,8 +114,9 @@ jobs:
     if: ${{ github.event.inputs.deploy_to_server == 'true' && needs.build.result == 'success' }}
     runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
     timeout-minutes: 10
-    # Тот же GITHUB_TOKEN, что пушит образ в build — с read:packages хватает на docker pull на сервере
-    # без отдельного GHCR_PULL_TOKEN (иначе 403, если PAT без read:packages).
+    # По умолчанию — GITHUB_TOKEN (packages: read). Если пакет GHCR не выдаёт этому репо доступ
+    # (или org ограничивает token), на сервере будет 403 на manifest — задайте секрет GHCR_PULL_TOKEN
+    # (classic PAT: read:packages или fine-grained: read packages org Oxem-Studio).
     permissions:
       contents: read
       packages: read
@@ -125,8 +126,8 @@ jobs:
         env:
           IMAGE_FULL: ${{ needs.build.outputs.image_full }}
           TAG: ${{ needs.build.outputs.tag }}
-          GHCR_PULL_TOKEN: ${{ github.token }}
-          GHCR_LOGIN_USER: ${{ github.actor }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN != '' && secrets.GHCR_PULL_TOKEN || github.token }}
+          GHCR_LOGIN_USER: ${{ secrets.GHCR_PULL_TOKEN != '' && (secrets.GHCR_PULL_LOGIN != '' && secrets.GHCR_PULL_LOGIN || 'x-access-token') || github.actor }}
         with:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}

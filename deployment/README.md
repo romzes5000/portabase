@@ -46,7 +46,8 @@ BuildKit-кэш пишется в **GHCR** под тегом **`buildcache`** (�
 | `DEPLOY_HOST` | IP или hostname сервера |
 | `DEPLOY_USER` | SSH-пользователь (например `deploy`) |
 | `DEPLOY_SSH_KEY` | Приватный ключ (PEM), **без** passphrase для CI |
-| `GHCR_PULL_TOKEN` | Не обязателен: job **deploy** передаёт на сервер **`GITHUB_TOKEN`** (`packages: read`) — тем же токеном, что пушит образ в **build**. Отдельный PAT нужен только если уберёте эту схему или потребуется внешний pull |
+| `GHCR_PULL_TOKEN` | **Часто нужен при 403 на `docker pull`:** PAT с **`read:packages`** (classic) или fine-grained с доступом к пакетам org **Oxem-Studio**. Job **deploy** по умолчанию использует **`GITHUB_TOKEN`**, но у GHCR пакет может быть без доступа для репозитория **portabase-deploy** — тогда без PAT манифест отдаёт **403** даже после успешного `docker login` |
+| `GHCR_PULL_LOGIN` | Не обязателен. Если задан `GHCR_PULL_TOKEN`, логин на GHCR: по умолчанию **`x-access-token`** (подходит для classic PAT); при необходимости укажите владельца PAT (GitHub username) |
 
 Опционально: `FORK_READ_TOKEN` в workflow checkout — только если форк приложения станет приватным.
 
@@ -59,11 +60,15 @@ BuildKit-кэш пишется в **GHCR** под тегом **`buildcache`** (�
 
 ### Приватный пакет GHCR
 
-Workflow сам логинится на `ghcr.io` на сервере через **`GITHUB_TOKEN`** job’а deploy (в workflow задано `permissions: packages: read`). Это тот же org/repo-токен, что и у шага push в **build**, поэтому отдельный PAT для pull обычно **не нужен**.
+Workflow логинится на сервере через **`GITHUB_TOKEN`** (`permissions: packages: read`) или через секрет **`GHCR_PULL_TOKEN`**, если он задан (приоритет у секрета).
 
-Если по какой-то причине используете **другой** токен/PAT и видите **`403 Forbidden`** на `docker pull` при успешном `docker login`: у токена должны быть **`read:packages`** и доступ к org-пакету; либо сделайте пакет **public** в настройках GitHub Packages.
+**403 на `docker pull` после успешного login** обычно значит: токен не может читать манифест пакета. Варианты:
 
-Проверка вручную: `echo "$PAT" | docker login ghcr.io -u USERNAME --password-stdin` и затем `docker pull ghcr.io/oxem-studio/portabase:<tag>`.
+1. **Рекомендуется:** создать [classic PAT](https://github.com/settings/tokens) с **`read:packages`**, добавить в **Secrets** репозитория `GHCR_PULL_TOKEN`, при необходимости — `GHCR_PULL_LOGIN` (см. таблицу выше).
+2. В **GitHub** → **Packages** → пакет `portabase` → **Package settings** → **Manage Actions access** — выдать репозиторию **Oxem-Studio/portabase-deploy** роль **Read** (или **Write**), чтобы **`GITHUB_TOKEN`** этого репо мог делать `docker pull` без PAT.
+3. Сделать пакет **public** в настройках пакета (если допустимо по политике).
+
+Проверка вручную: `echo "$PAT" | docker login ghcr.io -u x-access-token --password-stdin` и затем `docker pull ghcr.io/oxem-studio/portabase:<tag>`.
 
 ## Деплой на сервер
 
