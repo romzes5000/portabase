@@ -92,7 +92,8 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # mode=max — максимальный hit-rate GHA cache; при узком месте на upload — см. deployment/README.md
+      # Кэш в GHCR (registry), не GHA cache API: иначе после успешного push образа падает export в Actions Cache
+      # (Azure 400 HTML «Our services aren't available») и весь job = failure. Тег buildcache — служебный BuildKit.
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -105,8 +106,8 @@ jobs:
           platforms: linux/amd64
           provenance: false
           sbom: false
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          cache-from: type=registry,ref=${{ steps.ghcr.outputs.image_base }}:buildcache
+          cache-to: type=registry,ref=${{ steps.ghcr.outputs.image_base }}:buildcache,mode=max
 
   deploy:
     needs: build

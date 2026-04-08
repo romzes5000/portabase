@@ -19,11 +19,11 @@
 
 Если runner в org имеет **дополнительные метки** и не подхватывает job с одним `self-hosted`, в [build-and-deploy.yml](.github/workflows/build-and-deploy.yml) замените `runs-on` на `runs-on: [self-hosted, <ваша-метка>]`.
 
-## Кэш сборки (GHA)
+## Кэш сборки (BuildKit)
 
-В workflow: `cache-from` / `cache-to: type=gha,mode=max` — максимальный reuse слоёв Docker. Если узкое место — **долгий upload кэша** в Actions, можно временно переключить на `mode=min` в [build-and-deploy.yml](.github/workflows/build-and-deploy.yml) (меньше объёма записи, чуть ниже hit-rate).
+BuildKit-кэш пишется в **GHCR** под тегом **`buildcache`** (тот же пакет `ghcr.io/oxem-studio/portabase`, отдельный манифест). Раньше использовался **GitHub Actions Cache** (`type=gha`); экспорт туда после успешного `docker push` иногда падал с ошибкой Azure/HTML 400 — из-за этого весь job помечался failed, хотя образ уже был в registry.
 
-На **self-hosted** runner с постоянным диском дополнительно можно настроить локальный BuildKit cache (`type=local`) в конфигурации хоста — слои переживут очистку GHA cache.
+На **self-hosted** при желании можно дополнительно настроить локальный BuildKit cache (`type=local`) на машине runner.
 
 ### Что уже сделано в workflow и образе
 
@@ -34,6 +34,7 @@
 | Таймауты | `build`: 60 мин, `deploy`: 10 мин |
 | Node для JS actions | `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` |
 | Actions | `actions/checkout@v6`; build-push: `provenance: false`, `sbom: false` |
+| BuildKit cache | Запись в **GHCR** (`:buildcache`), не в API Actions Cache — иначе при сбое экспорта кэша job падал после успешного push образа |
 | Dockerfile (в форке приложения) | tusd с [GitHub Releases](https://github.com/tus/tusd/releases) вместо `git clone` + `go build`; BuildKit `--mount=type=cache` для pnpm store и `.next/cache` |
 
 Сборка в CI использует **тот же** [`docker/dockerfile/Dockerfile`](https://github.com/romzes5000/portabase/blob/main/docker/dockerfile/Dockerfile) из checkout’а форка по полю `ref`.
