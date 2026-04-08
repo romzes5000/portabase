@@ -13,6 +13,18 @@
 
 Политика веток: [fork-workflow в portabase](https://github.com/romzes5000/portabase/blob/main/docs/fork-workflow.md).
 
+## Self-hosted runner
+
+Workflow **Build Portabase from fork** использует `runs-on: self-hosted`, по тому же принципу, что [Validation / Deploy SSH в neurosales](https://github.com/Oxem-Studio/neurosales-next-app) (Oxem-Studio).
+
+**Что нужно:**
+
+1. Зарегистрировать runner для этого репозитория или для организации/аккаунта: **Settings → Actions → Runners → New self-hosted runner** (инструкция GitHub для Linux/macOS/Windows).
+2. На машине runner’а: установлен **Docker** и **Docker Buildx** (как на типичном CI-хосте), сеть до `ghcr.io` и при необходимости до SSH-хоста деплоя.
+3. Если у вас несколько self-hosted машин, задайте **общие метки** (`self-hosted`, `Linux`, `X64`) и при необходимости поменяйте в workflow на `runs-on: [self-hosted, oxem, ...]` под ваши labels.
+
+Пока runner не подключён, job’ы будут ждать в очереди.
+
 ## Секреты (GitHub → Settings → Secrets)
 
 | Секрет | Назначение |
