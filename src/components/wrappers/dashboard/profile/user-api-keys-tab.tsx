@@ -1,5 +1,14 @@
 "use client";
 
+import {
+    AlertDialog,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {Button} from "@/components/ui/button";
 import {
     Dialog,
@@ -35,6 +44,8 @@ export function UserApiKeysTab() {
     const [keys, setKeys] = useState<KeyRow[]>([]);
     const [loading, setLoading] = useState(false);
     const [newKeyPlaintext, setNewKeyPlaintext] = useState<string | null>(null);
+    const [keyToRevoke, setKeyToRevoke] = useState<KeyRow | null>(null);
+    const [revoking, setRevoking] = useState(false);
 
     const refresh = useCallback(async () => {
         const res = await listApiKeysAction({});
@@ -85,15 +96,33 @@ export function UserApiKeysTab() {
         }
     };
 
-    const handleRevoke = async (id: string) => {
+    const handleRevoke = async (id: string): Promise<boolean> => {
         const res = await revokeApiKeyAction({
             apiKeyId: id,
         });
         if (res?.data?.success) {
             toast.success("Key revoked");
             await refresh();
-        } else if (res?.serverError) {
+            return true;
+        }
+        if (res?.serverError) {
             toast.error(res.serverError);
+        }
+        return false;
+    };
+
+    const confirmRevoke = async () => {
+        if (!keyToRevoke) {
+            return;
+        }
+        setRevoking(true);
+        try {
+            const ok = await handleRevoke(keyToRevoke.id);
+            if (ok) {
+                setKeyToRevoke(null);
+            }
+        } finally {
+            setRevoking(false);
         }
     };
 
@@ -131,6 +160,32 @@ export function UserApiKeysTab() {
                 displayed <strong>once</strong> in a dialog right after you create it (we store only a hash). If you lose
                 the key, revoke it and create a new one.
             </p>
+            <AlertDialog open={keyToRevoke !== null} onOpenChange={(open) => !open && setKeyToRevoke(null)}>
+                <AlertDialogContent>
+                    <AlertDialogHeader>
+                        <AlertDialogTitle>Revoke API key?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                            This will immediately invalidate the key{" "}
+                            <span className="font-medium text-foreground">{keyToRevoke?.name}</span> (
+                            <span className="font-mono text-xs">{keyToRevoke?.keyPrefix}…</span>). MCP and automation
+                            using it will stop working until you create a new key.
+                        </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                        <AlertDialogCancel type="button" disabled={revoking}>
+                            Cancel
+                        </AlertDialogCancel>
+                        <Button
+                            type="button"
+                            variant="destructive"
+                            disabled={revoking}
+                            onClick={() => void confirmRevoke()}
+                        >
+                            {revoking ? "Revoking…" : "Revoke key"}
+                        </Button>
+                    </AlertDialogFooter>
+                </AlertDialogContent>
+            </AlertDialog>
             <Dialog open={newKeyPlaintext !== null} onOpenChange={(open) => !open && closeNewKeyDialog()}>
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
@@ -193,7 +248,7 @@ export function UserApiKeysTab() {
                                         variant="destructive"
                                         size="sm"
                                         type="button"
-                                        onClick={() => void handleRevoke(k.id)}
+                                        onClick={() => setKeyToRevoke(k)}
                                     >
                                         Revoke
                                     </Button>
