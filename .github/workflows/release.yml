@@ -13,6 +13,7 @@ permissions:
 jobs:
 
   check-skip:
+    if: github.repository == 'Portabase/portabase'
     runs-on: ubuntu-latest
     outputs:
       skip: ${{ steps.set-skip.outputs.skip }}

@@ -1,0 +1,146 @@
+# Репозиторий Oxem-Studio/portabase-deploy: сборка образа из форка + опциональный выкат по SSH.
+
+name: Build Portabase from fork
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Тег или полный SHA на romzes5000/portabase (исходный форк)"
+        required: true
+        type: string
+      image_tag:
+        description: "Тег образа (по умолчанию = короткий SHA)"
+        required: false
+        type: string
+      deploy_to_server:
+        description: "После сборки выкатить на сервер по SSH (нужны secrets DEPLOY_*)"
+        required: false
+        type: boolean
+        default: false
+      use_self_hosted:
+        description: "Сборка и деплой на self-hosted runner Oxem-Studio (орг). Выключите для GitHub-hosted."
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: portabase-deploy-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Рекомендация GitHub: JS actions на Node 24 до дефолта на runner
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FORK_REPO: romzes5000/portabase
+
+jobs:
+  build:
+    runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image_full: ${{ steps.image_ref.outputs.full }}
+      tag: ${{ steps.tag.outputs.tag }}
+
+    steps:
+      - name: GHCR image name (owner lowercase)
+        id: ghcr
+        run: |
+          echo "image_base=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/portabase" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout application source
+        uses: actions/checkout@v6
+        with:
+          repository: ${{ env.FORK_REPO }}
+          ref: ${{ inputs.ref }}
+          fetch-depth: 1
+          fetch-tags: true
+
+      - name: Set image tag
+        id: tag
+        env:
+          INPUT_REF: ${{ inputs.ref }}
+          INPUT_IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          set -euo pipefail
+          if [ -n "${INPUT_IMAGE_TAG:-}" ]; then
+            echo "tag=${INPUT_IMAGE_TAG}" >> "$GITHUB_OUTPUT"
+          elif [[ "${INPUT_REF}" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "tag=${INPUT_REF:0:7}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${INPUT_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set full image ref
+        id: image_ref
+        env:
+          TAG: ${{ steps.tag.outputs.tag }}
+          BASE: ${{ steps.ghcr.outputs.image_base }}
+        run: |
+          echo "full=${BASE}:${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # Кэш в GHCR (registry), не GHA cache API: иначе после успешного push образа падает export в Actions Cache
+      # (Azure 400 HTML «Our services aren't available») и весь job = failure. Тег buildcache — служебный BuildKit.
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./docker/dockerfile/Dockerfile
+          push: true
+          tags: |
+            ${{ steps.ghcr.outputs.image_base }}:${{ steps.tag.outputs.tag }}
+          target: prod
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          cache-from: type=registry,ref=${{ steps.ghcr.outputs.image_base }}:buildcache
+          cache-to: type=registry,ref=${{ steps.ghcr.outputs.image_base }}:buildcache,mode=max
+
+  deploy:
+    needs: build
+    if: ${{ github.event.inputs.deploy_to_server == 'true' && needs.build.result == 'success' }}
+    runs-on: ${{ github.event.inputs.use_self_hosted == 'true' && 'self-hosted' || 'ubuntu-latest' }}
+    timeout-minutes: 10
+    # По умолчанию — GITHUB_TOKEN (packages: read). Если пакет GHCR не выдаёт этому репо доступ
+    # (или org ограничивает token), на сервере будет 403 на manifest — задайте секрет GHCR_PULL_TOKEN
+    # (classic PAT: read:packages или fine-grained: read packages org Oxem-Studio).
+    permissions:
+      contents: read
+      packages: read
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          IMAGE_FULL: ${{ needs.build.outputs.image_full }}
+          TAG: ${{ needs.build.outputs.tag }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN != '' && secrets.GHCR_PULL_TOKEN || github.token }}
+          GHCR_LOGIN_USER: ${{ secrets.GHCR_PULL_TOKEN != '' && (secrets.GHCR_PULL_LOGIN != '' && secrets.GHCR_PULL_LOGIN || 'x-access-token') || github.actor }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script_stop: true
+          envs: IMAGE_FULL,TAG,GHCR_PULL_TOKEN,GHCR_LOGIN_USER
+          script: |
+            set -euo pipefail
+            if [ -n "${GHCR_PULL_TOKEN:-}" ]; then
+              echo "$GHCR_PULL_TOKEN" | docker login ghcr.io -u "${GHCR_LOGIN_USER}" --password-stdin
+            fi
+            docker pull "${IMAGE_FULL}"
+            install -d /opt/portabase
+            echo "IMAGE_TAG=${TAG}" > /opt/portabase/.env.deploy
+            docker compose --env-file /opt/portabase/.env.deploy -f /opt/portabase/docker-compose.yml up -d --remove-orphans --force-recreate
+            docker image prune -f

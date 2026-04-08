@@ -1,0 +1,16 @@
+# Скопируйте на сервер как /opt/portabase/docker-compose.yml и подставьте volume/env под вашу среду.
+# Тег образа задаёт CI через /opt/portabase/.env.deploy (IMAGE_TAG=...).
+
+services:
+  portabase:
+    image: ghcr.io/oxem-studio/portabase:${IMAGE_TAG}
+    restart: unless-stopped
+    ports:
+      - "8887:80"
+    environment:
+      NODE_ENV: production
+    # volumes:
+    #   - portabase-data:/data
+
+# volumes:
+#   portabase-data:

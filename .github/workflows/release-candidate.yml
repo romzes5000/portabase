@@ -12,6 +12,7 @@ permissions:
 
 jobs:
   docker_publish:
+    if: github.repository == 'Portabase/portabase'
     uses: ./.github/workflows/docker.yml
     with:
       add_latest: true
@@ -20,6 +21,7 @@ jobs:
       DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD_2 }}
 
   discord_notification:
+    if: github.repository == 'Portabase/portabase'
     needs: docker_publish
     uses: ./.github/workflows/discord.yml
     with:

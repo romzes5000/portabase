@@ -12,12 +12,14 @@
     "db:migrate": "drizzle-kit migrate",
     "db:drop": "drizzle-kit drop",
     "auth:generate": "npx @better-auth/cli generate --config ./src/lib/auth/auth.ts",
-    "release": "release-it"
+    "release": "release-it",
+    "mcp": "tsx src/mcp/server.ts"
   },
   "dependencies": {
     "@better-auth/passkey": "^1.5.6",
     "@better-auth/sso": "^1.5.6",
     "@hookform/resolvers": "^5.2.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",

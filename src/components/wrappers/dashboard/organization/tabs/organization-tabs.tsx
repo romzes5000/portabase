@@ -16,6 +16,7 @@ import {
 import {
     OrganizationStoragesTab
 } from "@/components/wrappers/dashboard/organization/tabs/organization-channels-tab/organization-storages-tab";
+import {OrganizationApiKeysTab} from "@/components/wrappers/dashboard/organization/tabs/organization-api-keys-tab";
 
 export type OrganizationTabsProps = {
     organization: OrganizationWithMembers;
@@ -33,9 +34,13 @@ export const OrganizationTabs = ({activeMember, organization, notificationChanne
     const {
         canManageUsers,
         canManageNotifications,
-        canManageStorages
+        canManageStorages,
+        canManageSettings,
     } = useOrganizationPermissions(activeMember);
 
+    const showChannels = canManageNotifications && canManageStorages;
+    const showApiKeys = canManageSettings;
+    const useTabsLayout = showChannels || showApiKeys;
 
     useEffect(() => {
         const newTab = searchParams.get("tab") ?? "users";
@@ -46,55 +51,60 @@ export const OrganizationTabs = ({activeMember, organization, notificationChanne
         router.push(`?tab=${value}`);
     };
 
+    if (!useTabsLayout) {
+        return (
+            <SettingsOrganizationMembersTable organization={organization}/>
+        );
+    }
 
     return (
         <div className="h-full">
-            {(canManageNotifications && canManageStorages) ?
-                <Tabs className="h-full" value={tab} onValueChange={handleChangeTab}>
-                    <TabsList className="w-full">
-                        <TabsTrigger
-                            className="w-full"
-                            value="users"
-                        >
-                            Users
+            <Tabs className="h-full" value={tab} onValueChange={handleChangeTab}>
+                <TabsList className="w-full flex flex-wrap">
+                    <TabsTrigger className="flex-1 min-w-[120px]" value="users">
+                        Users
+                    </TabsTrigger>
+                    {showApiKeys && (
+                        <TabsTrigger className="flex-1 min-w-[120px]" value="api-keys">
+                            API keys
                         </TabsTrigger>
-
-                        <TabsTrigger
-                            className="w-full"
-                            value="notifications"
-                        >
-                            Notifiers
-                        </TabsTrigger>
-                        <TabsTrigger
-                            className="w-full"
-                            value="storages"
-                        >
-                            Storages
-                        </TabsTrigger>
-                    </TabsList>
-                    <TabsContent className="h-full" value="users">
-                        <SettingsOrganizationMembersTable organization={organization}/>
+                    )}
+                    {showChannels && (
+                        <>
+                            <TabsTrigger className="flex-1 min-w-[120px]" value="notifications">
+                                Notifiers
+                            </TabsTrigger>
+                            <TabsTrigger className="flex-1 min-w-[120px]" value="storages">
+                                Storages
+                            </TabsTrigger>
+                        </>
+                    )}
+                </TabsList>
+                <TabsContent className="h-full" value="users">
+                    <SettingsOrganizationMembersTable organization={organization}/>
+                </TabsContent>
+                {showApiKeys && (
+                    <TabsContent className="h-full" value="api-keys">
+                        <OrganizationApiKeysTab organization={organization}/>
                     </TabsContent>
-                    <TabsContent className="h-full" value="notifications">
-                        <OrganizationNotifiersTab
-                            organization={organization}
-                            notificationChannels={notificationChannels}
-                        />
-                    </TabsContent>
-                    <TabsContent className="h-full" value="storages">
-                        <OrganizationStoragesTab
-                            organization={organization}
-                            storageChannels={storageChannels}
-                        />
-                    </TabsContent>
-                </Tabs>
-                :
-                <SettingsOrganizationMembersTable organization={organization}/>
-            }
-
-
+                )}
+                {showChannels && (
+                    <>
+                        <TabsContent className="h-full" value="notifications">
+                            <OrganizationNotifiersTab
+                                organization={organization}
+                                notificationChannels={notificationChannels}
+                            />
+                        </TabsContent>
+                        <TabsContent className="h-full" value="storages">
+                            <OrganizationStoragesTab
+                                organization={organization}
+                                storageChannels={storageChannels}
+                            />
+                        </TabsContent>
+                    </>
+                )}
+            </Tabs>
         </div>
-
-
     );
 };

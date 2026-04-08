@@ -71,7 +71,10 @@ function checkRouteExists(pathname: string) {
     /^\/api\/tus\/hooks\/?$/,
     /^\/api\/events\/?$/,
     /^\/api\/config\/?$/,
+    /^\/api\/mcp\/?$/,
     /^\/api\/google\/drive\/callback\/?$/,
+    // Internal read-only API (Bearer API keys); handlers in app/api/internal/
+    /^\/api\/internal\/[^/]+\/?$/,
   ];
   return routePatterns.some((pattern) => pattern.test(pathname));
 }

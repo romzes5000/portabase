@@ -32,23 +32,18 @@ RUN apt-get update && apt-get install -y \
 ENV PATH="/usr/lib/postgresql/18/bin:${PATH}"
 
 
-FROM --platform=$BUILDPLATFORM golang:1.23-bookworm AS tusd-base
-
+# Release binary (без git clone + go build на каждый CI)
+FROM alpine:3.20 AS tusd-fetch
 ARG TUSD_VERSION=2.8.0
-
-RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /build
-
-RUN git clone https://github.com/tus/tusd.git . \
-    && git checkout v${TUSD_VERSION}
-
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
-    go build -ldflags="-s -w" -o /tusddist/tusd ./cmd/tusd
+ARG TARGETARCH
+RUN apk add --no-cache curl ca-certificates \
+    && curl -fsSL "https://github.com/tus/tusd/releases/download/v${TUSD_VERSION}/tusd_linux_${TARGETARCH}.tar.gz" \
+    | tar xz \
+    && mv "tusd_linux_${TARGETARCH}/tusd" /tusd \
+    && chmod +x /tusd
 
 FROM scratch AS tusd-dist
-COPY --from=tusd-base /tusddist/tusd /tusd
+COPY --from=tusd-fetch /tusd /tusd
 
 
 FROM base AS build-env
@@ -60,12 +55,14 @@ FROM build-env AS deps
 WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-RUN pnpm i --frozen-lockfile
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    pnpm i --frozen-lockfile
 
 FROM build-env AS dev
 
 COPY --from=deps /app/node_modules ./node_modules
-COPY --from=tusd-base /usr/local/bin/tusd /usr/local/bin/tusd
+COPY --from=tusd-fetch /tusd /usr/local/bin/tusd
+RUN chmod +x /usr/local/bin/tusd
 WORKDIR /app
 COPY . .
 
@@ -81,7 +78,9 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN pnpm run build
+RUN --mount=type=cache,id=pnpm-store,target=/root/.local/share/pnpm/store \
+    --mount=type=cache,id=next-cache,target=/app/.next/cache \
+    pnpm run build
 
 FROM base AS prod
 
