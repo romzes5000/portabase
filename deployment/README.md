@@ -1,27 +1,30 @@
-# CI/CD и деплой (отдельный репозиторий)
+# portabase-deploy — CI/CD для форка Portabase
 
-Шаблон для **отдельного** GitHub-репозитория (например `oxem/portabase-deploy`), который:
+Репозиторий **[github.com/romzes5000/portabase-deploy](https://github.com/romzes5000/portabase-deploy)** собирает Docker-образ из [форка приложения](https://github.com/romzes5000/portabase) по фиксированному **ref** (тег или SHA) и публикует в GHCR.
 
-- клонирует форк приложения [`romzes5000/portabase`](https://github.com/romzes5000/portabase) на заданный **ref** (тег или SHA);
-- собирает Docker-образ и публикует в ваш registry;
-- при необходимости выполняет выкат (SSH, Ansible, API — подставьте свои шаги).
+## Возможности
 
-## Как использовать
+- checkout `romzes5000/portabase` на заданный `ref`;
+- сборка `./docker/dockerfile/Dockerfile`, target `prod`;
+- push в `ghcr.io/<owner>/portabase:<tag>`.
 
-1. Создайте **новый пустой репозиторий** на GitHub (например `your-org/portabase-deploy`).
-2. Скопируйте из этой папки файл [`.github/workflows/build-and-deploy.yml`](.github/workflows/build-and-deploy.yml) в корень того репозитория (сохраните путь `.github/workflows/`).
-3. В настройках репозитория добавьте **Secrets** (и при необходимости **Environments**):
-   - `REGISTRY_USERNAME` / `REGISTRY_PASSWORD` — или используйте `GITHUB_TOKEN` + GHCR;
-   - для приватного форка — `FORK_READ_TOKEN` (fine-grained PAT с `Contents: Read` на `romzes5000/portabase`);
-   - секреты для деплоя (SSH key, webhook и т.д.).
-4. Запуск:
-   - **workflow_dispatch** с полями `ref` (тег или полный SHA) и опционально `image_tag`;
-   - либо добавьте триггер `push: tags:` под вашу схему тегов.
+## Запуск
 
-Политика веток и прод-рефов описана в [docs/fork-workflow.md](../docs/fork-workflow.md).
+1. **Actions** → **Build Portabase from fork** → **Run workflow**.
+2. Укажите `ref`: полный **SHA** (40 hex) или **имя тега** на форке.
+3. Опционально `image_tag` — иначе для SHA берётся короткий префикс, для тега — имя тега.
 
-## Публичный и приватный форк
+Политика веток и прод-рефов: [fork-workflow в репозитории portabase](https://github.com/romzes5000/portabase/blob/main/docs/fork-workflow.md).
 
-Публичный форк: `actions/checkout` с `repository: romzes5000/portabase` обычно **без** `token`.
+## Секреты
 
-Приватный форк: в шаге checkout добавьте `token: ${{ secrets.FORK_READ_TOKEN }}` (fine-grained PAT, read к репозиторию форка).
+| Секрет | Когда нужен |
+|--------|-------------|
+| (нет) | Публичный форк — checkout без токена. |
+| `FORK_READ_TOKEN` | Приватный форк: fine-grained PAT, `Contents: Read` на `romzes5000/portabase`. Добавьте в workflow шаг checkout: `token: ${{ secrets.FORK_READ_TOKEN }}`. |
+
+Образ в GHCR: убедитесь, что у пакета выставлены права **чтения** для нужных сред (или пакет public).
+
+## Выкат
+
+Шаги SSH / Ansible / API добавляйте в [`.github/workflows/build-and-deploy.yml`](.github/workflows/build-and-deploy.yml) после сборки.
