@@ -35,6 +35,7 @@ BuildKit-кэш пишется в **GHCR** под тегом **`buildcache`** (�
 | Node для JS actions | `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` |
 | Actions | `actions/checkout@v6`; build-push: `provenance: false`, `sbom: false` |
 | BuildKit cache | Запись в **GHCR** (`:buildcache`), не в API Actions Cache — иначе при сбое экспорта кэша job падал после успешного push образа |
+| Диск на VPS после деплоя | После `compose up` выполняется **`docker image prune -af`** и **`docker builder prune -af`** — старые теги `portabase` и неиспользуемые слои не копятся (иначе при маленьком диске `docker pull` падает с *no space left on device*) |
 | Dockerfile (в форке приложения) | tusd с [GitHub Releases](https://github.com/tus/tusd/releases) вместо `git clone` + `go build`; BuildKit `--mount=type=cache` для pnpm store и `.next/cache` |
 
 Сборка в CI использует **тот же** [`docker/dockerfile/Dockerfile`](https://github.com/romzes5000/portabase/blob/main/docker/dockerfile/Dockerfile) из checkout’а форка по полю `ref`.

@@ -216,8 +216,8 @@ export function UserApiKeysTab() {
                         </DialogDescription>
                     </DialogHeader>
                     <div className="relative min-w-0 rounded-md border bg-muted/50">
-                        <div className="min-w-0 overflow-x-auto overflow-y-hidden py-2.5 pl-3 pr-12">
-                            <code className="block w-max min-w-full font-mono text-xs whitespace-nowrap">
+                        <div className="min-w-0 overflow-x-auto overflow-y-hidden py-2.5 pl-3 pr-[4.5rem] sm:pr-20">
+                            <code className="block w-max min-w-full pr-3 font-mono text-xs whitespace-nowrap">
                                 {newKeyPlaintext ?? ""}
                             </code>
                         </div>
@@ -225,7 +225,7 @@ export function UserApiKeysTab() {
                             type="button"
                             variant="ghost"
                             size="icon"
-                            className="absolute right-1 top-1/2 size-9 shrink-0 -translate-y-1/2"
+                            className="absolute right-2 top-1/2 z-10 size-9 shrink-0 -translate-y-1/2"
                             aria-label="Copy API key"
                             onClick={() => void copyNewKey()}
                         >

@@ -143,4 +143,6 @@ jobs:
             install -d /opt/portabase
             echo "IMAGE_TAG=${TAG}" > /opt/portabase/.env.deploy
             docker compose --env-file /opt/portabase/.env.deploy -f /opt/portabase/docker-compose.yml up -d --remove-orphans --force-recreate
-            docker image prune -f
+            # After pull/up old image tags are unused; plain `prune -f` only removes dangling layers
+            docker image prune -af
+            docker builder prune -af 2>/dev/null || true
