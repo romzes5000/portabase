@@ -21,11 +21,6 @@ import {
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
-import {
-    createApiKeyAction,
-    listApiKeysAction,
-    revokeApiKeyAction,
-} from "@/features/keys/api-keys.action";
 import type {ApiKeyAccessLevel} from "@/features/keys/api-keys.scopes";
 import {useCallback, useEffect, useState} from "react";
 import {toast} from "sonner";
@@ -35,10 +30,27 @@ type KeyRow = {
     name: string;
     keyPrefix: string;
     scopes: string[];
-    lastUsedAt: Date | null;
-    expiresAt: Date | null;
-    createdAt: Date;
+    lastUsedAt: string | Date | null;
+    expiresAt: string | Date | null;
+    createdAt: string | Date;
 };
+
+async function apiKeysFetch<T>(path: string, init?: RequestInit): Promise<T> {
+    const res = await fetch(path, {
+        credentials: "same-origin",
+        ...init,
+        headers: {
+            "Content-Type": "application/json",
+            ...init?.headers,
+        },
+    });
+    const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+    if (!res.ok) {
+        const err = typeof data.error === "string" ? data.error : res.statusText || "Request failed";
+        throw new Error(err);
+    }
+    return data as T;
+}
 
 /** User-scoped API keys for MCP and /api/internal (scopes: read / write / admin). */
 export function UserApiKeysTab() {
@@ -51,9 +63,16 @@ export function UserApiKeysTab() {
     const [revoking, setRevoking] = useState(false);
 
     const refresh = useCallback(async () => {
-        const res = await listApiKeysAction({});
-        if (res?.data?.success) {
-            setKeys(res.data.keys as KeyRow[]);
+        try {
+            const data = await apiKeysFetch<{success: true; keys: KeyRow[]}>(
+                "/api/user/api-keys",
+                {method: "GET"}
+            );
+            if (data.success) {
+                setKeys(data.keys);
+            }
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Could not load API keys");
         }
     }, []);
 
@@ -68,31 +87,28 @@ export function UserApiKeysTab() {
         }
         setLoading(true);
         try {
-            const res = await createApiKeyAction({
-                name: name.trim(),
-                access,
+            const data = await apiKeysFetch<{
+                success: true;
+                id: string;
+                plaintext: string;
+                keyPrefix: string;
+            }>("/api/user/api-keys", {
+                method: "POST",
+                body: JSON.stringify({name: name.trim(), access}),
             });
-            if (res?.validationErrors) {
-                toast.error(`Validation: ${JSON.stringify(res.validationErrors)}`);
-                return;
-            }
-            if (res?.data?.success && res.data.plaintext) {
-                setNewKeyPlaintext(res.data.plaintext);
+            if (data.success && data.plaintext) {
+                setNewKeyPlaintext(data.plaintext);
                 setName("");
                 setAccess("read");
                 await refresh();
                 try {
-                    await navigator.clipboard.writeText(res.data.plaintext);
+                    await navigator.clipboard.writeText(data.plaintext);
                     toast.success("Copied to clipboard. Also saved in the dialog below.");
                 } catch {
                     toast.message("Copy this key from the dialog — clipboard is unavailable.", {
                         description: "Use HTTPS or localhost, or copy manually.",
                     });
                 }
-            } else if (res?.serverError) {
-                toast.error(String(res.serverError));
-            } else {
-                toast.error("Unexpected response from server — check the browser Network tab for the action.");
             }
         } catch (e) {
             toast.error(e instanceof Error ? e.message : "Create key failed");
@@ -102,18 +118,17 @@ export function UserApiKeysTab() {
     };
 
     const handleRevoke = async (id: string): Promise<boolean> => {
-        const res = await revokeApiKeyAction({
-            apiKeyId: id,
-        });
-        if (res?.data?.success) {
+        try {
+            await apiKeysFetch<{success: true}>(`/api/user/api-keys/${encodeURIComponent(id)}`, {
+                method: "DELETE",
+            });
             toast.success("Key revoked");
             await refresh();
             return true;
+        } catch (e) {
+            toast.error(e instanceof Error ? e.message : "Revoke failed");
+            return false;
         }
-        if (res?.serverError) {
-            toast.error(res.serverError);
-        }
-        return false;
     };
 
     const confirmRevoke = async () => {

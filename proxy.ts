@@ -75,6 +75,8 @@ function checkRouteExists(pathname: string) {
     /^\/api\/google\/drive\/callback\/?$/,
     // Internal read-only API (Bearer API keys); handlers in app/api/internal/
     /^\/api\/internal\/[^/]+\/?$/,
+    // Session API keys UI (fetch; avoids stale Server Action hashes after deploy)
+    /^\/api\/user\/api-keys(?:\/[^/]+)?\/?$/,
   ];
   return routePatterns.some((pattern) => pattern.test(pathname));
 }
