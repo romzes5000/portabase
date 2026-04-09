@@ -52,6 +52,33 @@ export async function agentIdsForOrganizations(orgIds: string[] | null): Promise
     return [...new Set(dbs.map((d) => d.agentId))];
 }
 
+/** Error message shared with MCP tools that gate agent access by org-linked databases. */
+export const AGENT_MCP_ACCESS_DENIED_MESSAGE =
+    "Access denied: agent is not linked to any database in your selected organizations; register databases on the agent and assign them to a project first";
+
+/**
+ * `ids === undefined` → no org filter (stdio / full access). Otherwise agent must be in the list.
+ */
+export function assertAgentIdInOrgScopeList(agentId: string, ids: string[] | undefined): void {
+    if (ids !== undefined) {
+        if (ids.length === 0 || !ids.includes(agentId)) {
+            throw new Error(AGENT_MCP_ACCESS_DENIED_MESSAGE);
+        }
+    }
+}
+
+/**
+ * HTTP MCP: `agentId` must appear in {@link agentIdsForOrganizations}.
+ * Stdio (`orgIds` from `resolveOrgScope` when `ctx` is null): `orgIds` is null → no filter.
+ */
+export async function assertAgentIdAllowedForMcpOrgScope(
+    agentId: string,
+    orgIds: string[] | null
+): Promise<void> {
+    const ids = await agentIdsForOrganizations(orgIds);
+    assertAgentIdInOrgScopeList(agentId, ids);
+}
+
 export async function internalListAgents(
     orgIds: string[] | null,
     includeArchived: boolean

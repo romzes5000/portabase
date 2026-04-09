@@ -15,6 +15,7 @@ import {registerDeleteAgent} from "@/mcp/tools/delete-agent";
 import {registerDeleteOrganization} from "@/mcp/tools/delete-organization";
 import {registerDeleteProject} from "@/mcp/tools/delete-project";
 import {registerDeleteStorageChannel} from "@/mcp/tools/delete-storage-channel";
+import {registerGetAgentEdgeKey} from "@/mcp/tools/get-agent-edge-key";
 import {registerGetDatabasePolicies} from "@/mcp/tools/get-database-policies";
 import {registerListNotificationChannels} from "@/mcp/tools/notification-channels";
 import {registerListOrganizations} from "@/mcp/tools/organizations";
@@ -53,6 +54,7 @@ export function registerAllTools(server: McpServer, ctx: McpContext | null): voi
         registerCreateProject(server, ctx);
         registerUpdateProject(server, ctx);
         registerCreateAgent(server, ctx);
+        registerGetAgentEdgeKey(server, ctx);
         registerUpdateAgent(server, ctx);
         registerUpdateDatabase(server, ctx);
         registerAssignDatabaseProject(server, ctx);

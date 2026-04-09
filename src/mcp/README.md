@@ -66,7 +66,9 @@ npx @modelcontextprotocol/inspector@latest --cli --transport stdio --method reso
 npx @modelcontextprotocol/inspector@latest --cli --transport stdio --method resources/read --uri 'portabase://status' pnpm mcp
 ```
 
-Ожидаемо: **8 tools**, ресурс **`portabase://status`**, вызовы возвращают JSON с **`ok: true`**.
+Ожидаемо: список tools (в т.ч. **`get_agent_edge_key`** при scope **`write`**), ресурс **`portabase://status`**, вызовы возвращают JSON с **`ok: true`**.
+
+Smoke (после деплоя с write-ключом): **`tools/call`** `get_agent_edge_key` с валидным **`agent_id`** — **`edge_key`** (base64) или **`null`**, если master key в контейнере недоступен.
 
 ## Docker (production image)
 

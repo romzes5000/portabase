@@ -4,7 +4,7 @@ import {and, count, eq, inArray, isNull, ne} from "drizzle-orm";
 import {db} from "@/db";
 import * as drizzleDb from "@/db";
 import type {McpContext} from "@/lib/api/internal-auth";
-import {agentIdsForOrganizations} from "@/lib/api/internal-queries";
+import {assertAgentIdAllowedForMcpOrgScope} from "@/lib/api/internal-queries";
 import {OrgAccessDeniedError, requireOrgOwnerOrAdmin} from "@/mcp/org-scope";
 import {slugify} from "@/utils/slugify";
 
@@ -272,14 +272,7 @@ export async function internalUpdateAgent(
     ctx: McpContext | null
 ): Promise<typeof drizzleDb.schemas.agent.$inferSelect> {
     void ctx;
-    const ids = await agentIdsForOrganizations(orgIds);
-    if (ids !== undefined) {
-        if (ids.length === 0 || !ids.includes(agentId)) {
-            throw new Error(
-                "Access denied: agent is not linked to any database in your selected organizations; register databases on the agent and assign them to a project first"
-            );
-        }
-    }
+    await assertAgentIdAllowedForMcpOrgScope(agentId, orgIds);
     const slug = slugify(data.name);
     await verifyAgentSlugUnique(slug, agentId);
     const [row] = await db
