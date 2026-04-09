@@ -26,7 +26,7 @@ import {
     listApiKeysAction,
     revokeApiKeyAction,
 } from "@/features/keys/api-keys.action";
-import type {ApiKeyAccessLevel} from "@/features/keys/api-keys.action";
+import type {ApiKeyAccessLevel} from "@/features/keys/api-keys.scopes";
 import {useCallback, useEffect, useState} from "react";
 import {toast} from "sonner";
 

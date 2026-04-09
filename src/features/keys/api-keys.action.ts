@@ -6,19 +6,7 @@ import {z} from "zod";
 import {db} from "@/db";
 import {ActionError, userAction} from "@/lib/safe-actions/actions";
 import {apiKey} from "@/db/schema/16_api-key";
-
-export type ApiKeyAccessLevel = "read" | "write" | "admin";
-
-/** read → [read]; write → [read, write]; admin → [read, write, admin] */
-export function normalizeApiKeyScopes(level: ApiKeyAccessLevel): string[] {
-    if (level === "admin") {
-        return ["read", "write", "admin"];
-    }
-    if (level === "write") {
-        return ["read", "write"];
-    }
-    return ["read"];
-}
+import {normalizeApiKeyScopes} from "./api-keys.scopes";
 
 export const createApiKeyAction = userAction
     .schema(
