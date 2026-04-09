@@ -1,6 +1,6 @@
 import {WebStandardStreamableHTTPServerTransport} from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 
-import {loadMcpContext, verifyApiKeyRequest} from "@/lib/api/internal-auth";
+import {loadMcpContext, verifyApiKeyForMcp} from "@/lib/api/internal-auth";
 import {createPortabaseMcpServer} from "@/mcp/create-mcp-server";
 
 export const runtime = "nodejs";
@@ -17,7 +17,7 @@ const corsHeaders = {
 };
 
 async function handleMcp(request: Request): Promise<Response> {
-    const auth = await verifyApiKeyRequest(request, "read");
+    const auth = await verifyApiKeyForMcp(request);
     if (!auth.ok) {
         return auth.response;
     }
@@ -52,7 +52,7 @@ async function handleMcp(request: Request): Promise<Response> {
     const body = res.body.pipeThrough(
         new TransformStream({
             flush() {
-                return cleanup();
+                void cleanup();
             },
         }),
     );

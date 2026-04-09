@@ -29,7 +29,8 @@ function sqlOrgInProject(orgIds: string[] | null, projectAlias = "p"): ReturnTyp
     )})`;
 }
 
-async function agentIdsForOrganizations(orgIds: string[] | null): Promise<string[] | undefined> {
+/** Exported for MCP write paths (agent access by org via projects/databases). */
+export async function agentIdsForOrganizations(orgIds: string[] | null): Promise<string[] | undefined> {
     if (orgIds === null) {
         return undefined;
     }

@@ -7,16 +7,31 @@ import {db} from "@/db";
 import {ActionError, userAction} from "@/lib/safe-actions/actions";
 import {apiKey} from "@/db/schema/16_api-key";
 
+export type ApiKeyAccessLevel = "read" | "write" | "admin";
+
+/** read → [read]; write → [read, write]; admin → [read, write, admin] */
+export function normalizeApiKeyScopes(level: ApiKeyAccessLevel): string[] {
+    if (level === "admin") {
+        return ["read", "write", "admin"];
+    }
+    if (level === "write") {
+        return ["read", "write"];
+    }
+    return ["read"];
+}
+
 export const createApiKeyAction = userAction
     .schema(
         z.object({
             name: z.string().min(1).max(128),
+            access: z.enum(["read", "write", "admin"]).default("read"),
         })
     )
     .action(async ({parsedInput, ctx}) => {
         const plaintext = `pb_${randomBytes(32).toString("hex")}`;
         const keyHash = createHash("sha256").update(plaintext, "utf8").digest("hex");
         const keyPrefix = plaintext.slice(0, 12);
+        const scopes = normalizeApiKeyScopes(parsedInput.access);
         try {
             const [row] = await db
                 .insert(apiKey)
@@ -24,7 +39,7 @@ export const createApiKeyAction = userAction
                     name: parsedInput.name,
                     keyHash,
                     keyPrefix,
-                    scopes: ["read"],
+                    scopes,
                     organizationId: null,
                     createdById: ctx.user.id,
                 })

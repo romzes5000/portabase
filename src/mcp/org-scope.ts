@@ -10,6 +10,27 @@ export class OrgAccessDeniedError extends Error {
     }
 }
 
+/** User is member but not owner/admin (variant B for destructive org operations). */
+export class OrgRoleDeniedError extends Error {
+    constructor(organizationId: string) {
+        super(`Access denied: organization ${organizationId} requires owner or admin role`);
+        this.name = "OrgRoleDeniedError";
+    }
+}
+
+/**
+ * HTTP MCP: require owner or admin in org. Stdio (`ctx === null`): no check.
+ */
+export function requireOrgOwnerOrAdmin(ctx: McpContext | null, organizationId: string): void {
+    if (!ctx) {
+        return;
+    }
+    const m = ctx.memberships.find((x) => x.organizationId === organizationId);
+    if (!m || (m.role !== "owner" && m.role !== "admin")) {
+        throw new OrgRoleDeniedError(organizationId);
+    }
+}
+
 /** Resolves org scope for HTTP internal API after API key auth. */
 export async function loadOrgScopeForApiKey(
     key: VerifiedApiKey,

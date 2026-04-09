@@ -6,11 +6,29 @@ import {member} from "@/db/schema/04_member";
 
 export type VerifiedApiKey = typeof apiKey.$inferSelect;
 
+export type ApiScope = "read" | "write" | "admin";
+
+function parseApiScopes(scopes: string[]): ApiScope[] {
+    const has = (x: ApiScope) => scopes.includes(x);
+    if (has("admin")) {
+        return ["read", "write", "admin"];
+    }
+    if (has("write")) {
+        return ["read", "write"];
+    }
+    if (has("read")) {
+        return ["read"];
+    }
+    return ["read"];
+}
+
 /** User-scoped context for MCP / internal API (memberships from member table). */
 export type McpContext = {
     userId: string;
     allowedOrgIds: string[];
     memberships: Array<{organizationId: string; role: string}>;
+    /** Scopes from the API key row (normalized). */
+    scopes: ApiScope[];
 };
 
 /**
@@ -28,6 +46,7 @@ export async function loadMcpContext(key: VerifiedApiKey): Promise<McpContext> {
         userId,
         allowedOrgIds: rows.map((r) => r.organizationId),
         memberships: rows.map((r) => ({organizationId: r.organizationId, role: r.role})),
+        scopes: parseApiScopes(key.scopes),
     };
 }
 
@@ -70,6 +89,61 @@ export async function verifyApiKeyRequest(
         };
     }
     if (!row.scopes.includes(requiredScope)) {
+        return {
+            ok: false,
+            response: Response.json({ok: false, error: "Insufficient scope"}, {status: 403}),
+        };
+    }
+    void (async () => {
+        try {
+            await db.update(apiKey).set({lastUsedAt: new Date()}).where(eq(apiKey.id, row.id));
+        } catch {
+            /* ignore */
+        }
+    })();
+    return {ok: true, key: row};
+}
+
+const MCP_SCOPES: ApiScope[] = ["read", "write", "admin"];
+
+/**
+ * Accepts any API key that has at least one MCP scope (read, write, or admin).
+ * Prefer this for `/api/mcp` so keys are not required to list `"read"` if they only have write/admin (legacy rows).
+ */
+export async function verifyApiKeyForMcp(
+    request: Request
+): Promise<{ok: true; key: VerifiedApiKey} | {ok: false; response: Response}> {
+    const authHeader = request.headers.get("authorization");
+    if (!authHeader?.startsWith("Bearer ")) {
+        return {
+            ok: false,
+            response: Response.json({ok: false, error: "Missing API key"}, {status: 401}),
+        };
+    }
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+        return {
+            ok: false,
+            response: Response.json({ok: false, error: "Missing API key"}, {status: 401}),
+        };
+    }
+    const hash = createHash("sha256").update(token, "utf8").digest("hex");
+    const row = await db.query.apiKey.findFirst({
+        where: and(eq(apiKey.keyHash, hash), isNull(apiKey.deletedAt)),
+    });
+    if (!row) {
+        return {
+            ok: false,
+            response: Response.json({ok: false, error: "Invalid API key"}, {status: 401}),
+        };
+    }
+    if (row.expiresAt && row.expiresAt < new Date()) {
+        return {
+            ok: false,
+            response: Response.json({ok: false, error: "API key expired"}, {status: 401}),
+        };
+    }
+    if (!MCP_SCOPES.some((s) => row.scopes.includes(s))) {
         return {
             ok: false,
             response: Response.json({ok: false, error: "Insufficient scope"}, {status: 403}),

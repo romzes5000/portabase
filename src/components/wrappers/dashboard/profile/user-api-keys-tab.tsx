@@ -20,11 +20,13 @@ import {
 } from "@/components/ui/dialog";
 import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
+import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
 import {
     createApiKeyAction,
     listApiKeysAction,
     revokeApiKeyAction,
 } from "@/features/keys/api-keys.action";
+import type {ApiKeyAccessLevel} from "@/features/keys/api-keys.action";
 import {useCallback, useEffect, useState} from "react";
 import {toast} from "sonner";
 
@@ -38,9 +40,10 @@ type KeyRow = {
     createdAt: Date;
 };
 
-/** User-scoped API keys for MCP and /api/internal (read scope). */
+/** User-scoped API keys for MCP and /api/internal (scopes: read / write / admin). */
 export function UserApiKeysTab() {
     const [name, setName] = useState("");
+    const [access, setAccess] = useState<ApiKeyAccessLevel>("read");
     const [keys, setKeys] = useState<KeyRow[]>([]);
     const [loading, setLoading] = useState(false);
     const [newKeyPlaintext, setNewKeyPlaintext] = useState<string | null>(null);
@@ -67,6 +70,7 @@ export function UserApiKeysTab() {
         try {
             const res = await createApiKeyAction({
                 name: name.trim(),
+                access,
             });
             if (res?.validationErrors) {
                 toast.error(`Validation: ${JSON.stringify(res.validationErrors)}`);
@@ -75,6 +79,7 @@ export function UserApiKeysTab() {
             if (res?.data?.success && res.data.plaintext) {
                 setNewKeyPlaintext(res.data.plaintext);
                 setName("");
+                setAccess("read");
                 await refresh();
                 try {
                     await navigator.clipboard.writeText(res.data.plaintext);
@@ -147,9 +152,9 @@ export function UserApiKeysTab() {
             <div className="mb-2 space-y-1">
                 <h2 className="text-2xl font-semibold tracking-tight">API keys</h2>
                 <p className="text-sm text-muted-foreground">
-                    Read-only access to <code className="text-xs">/api/internal/*</code> and{" "}
-                    <code className="text-xs">/api/mcp</code> for MCP and automation. Keys are tied to your account and
-                    reflect organizations you belong to.
+                    Access to <code className="text-xs">/api/internal/*</code> and <code className="text-xs">/api/mcp</code>{" "}
+                    depends on scopes you choose. Keys are tied to your account and reflect organizations you belong to;
+                    destructive org actions require owner or admin in that organization.
                 </p>
             </div>
             <p className="text-sm text-muted-foreground">
@@ -209,15 +214,40 @@ export function UserApiKeysTab() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-            <div className="flex flex-col gap-2">
-                <Label htmlFor="user-api-key-name">Name</Label>
-                <div className="flex gap-2">
+            <div className="flex flex-col gap-4">
+                <div className="flex flex-col gap-2">
+                    <Label htmlFor="user-api-key-name">Name</Label>
                     <Input
                         id="user-api-key-name"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder="e.g. Cursor MCP"
                     />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <Label>Access</Label>
+                    <RadioGroup
+                        value={access}
+                        onValueChange={(v) => setAccess(v as ApiKeyAccessLevel)}
+                        className="flex flex-col gap-2"
+                    >
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <RadioGroupItem value="read" id="access-read" />
+                            <span>Read only — list/get internal API and MCP read tools</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <RadioGroupItem value="write" id="access-write" />
+                            <span>Read + Write — backups, projects, agents, policies</span>
+                        </label>
+                        <label className="flex items-center gap-2 text-sm cursor-pointer">
+                            <RadioGroupItem value="admin" id="access-admin" />
+                            <span>
+                                Full — includes delete/archive and org/storage admin (use with care)
+                            </span>
+                        </label>
+                    </RadioGroup>
+                </div>
+                <div>
                     <Button type="button" onClick={() => void handleCreate()} disabled={loading}>
                         Create key
                     </Button>

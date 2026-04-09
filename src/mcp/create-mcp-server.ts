@@ -10,7 +10,7 @@ import {registerAllTools} from "@/mcp/tools";
 export function createPortabaseMcpServer(ctx: McpContext | null): McpServer {
     const server = new McpServer({
         name: "portabase-mcp",
-        version: "0.2.0",
+        version: "0.3.0",
     });
     registerAllTools(server, ctx);
     registerStatusResource(server, ctx);
