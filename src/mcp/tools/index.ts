@@ -15,6 +15,8 @@ import {registerDeleteAgent} from "@/mcp/tools/delete-agent";
 import {registerDeleteOrganization} from "@/mcp/tools/delete-organization";
 import {registerDeleteProject} from "@/mcp/tools/delete-project";
 import {registerDeleteStorageChannel} from "@/mcp/tools/delete-storage-channel";
+import {registerGetDatabasePolicies} from "@/mcp/tools/get-database-policies";
+import {registerListNotificationChannels} from "@/mcp/tools/notification-channels";
 import {registerListOrganizations} from "@/mcp/tools/organizations";
 import {registerListProjects} from "@/mcp/tools/projects";
 import {registerSetAlertPolicies} from "@/mcp/tools/set-alert-policies";
@@ -42,6 +44,8 @@ export function registerAllTools(server: McpServer, ctx: McpContext | null): voi
     registerListOrganizations(server, ctx);
     registerGetBackupStatus(server, ctx);
     registerListStorageChannels(server, ctx);
+    registerListNotificationChannels(server, ctx);
+    registerGetDatabasePolicies(server, ctx);
     registerPortabaseApiConfig(server);
 
     if (hasScope(ctx, "write")) {

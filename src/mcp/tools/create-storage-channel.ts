@@ -24,6 +24,12 @@ export function registerCreateStorageChannel(server: McpServer, ctx: McpContext 
         },
         async (args) => {
             try {
+                if (ctx != null && !args.organization_id) {
+                    return toolErr(
+                        "create_storage_channel",
+                        new Error("organization_id is required for HTTP MCP")
+                    );
+                }
                 const queryOrg = args.organization_id?.trim() || null;
                 const scope = resolveOrgScope(ctx, queryOrg);
                 const row = await internalCreateStorageChannel(

@@ -40,6 +40,39 @@ async function assertDatabaseInOrgScope(databaseId: string, orgIds: string[] | n
     return orgId;
 }
 
+/** Each id must be a notification_channel row usable by databaseOrgId (direct org or organization_notification_channels). */
+async function assertNotificationChannelsUsableByDatabaseOrg(
+    channelIds: string[],
+    databaseOrgId: string
+): Promise<void> {
+    const nc = drizzleDb.schemas.notificationChannel;
+    const onc = drizzleDb.schemas.organizationNotificationChannel;
+    for (const cid of channelIds) {
+        const rows = await db
+            .select()
+            .from(nc)
+            .where(and(eq(nc.id, cid), isNull(nc.deletedAt)))
+            .limit(1);
+        const row = rows[0];
+        if (!row) {
+            throw new Error(`Notification channel not found: ${cid}`);
+        }
+        if (row.organizationId === databaseOrgId) {
+            continue;
+        }
+        const link = await db
+            .select({oid: onc.organizationId})
+            .from(onc)
+            .where(and(eq(onc.notificationChannelId, cid), eq(onc.organizationId, databaseOrgId)))
+            .limit(1);
+        if (link.length === 0) {
+            throw new Error(
+                `Notification channel ${cid} is not linked to this database's organization. Use list_notification_channels with your organization_id (not a storage channel id).`
+            );
+        }
+    }
+}
+
 async function verifyAgentSlugUnique(slug: string, excludeAgentId?: string): Promise<void> {
     const conditions = excludeAgentId
         ? and(eq(drizzleDb.schemas.agent.slug, slug), ne(drizzleDb.schemas.agent.id, excludeAgentId))
@@ -242,7 +275,9 @@ export async function internalUpdateAgent(
     const ids = await agentIdsForOrganizations(orgIds);
     if (ids !== undefined) {
         if (ids.length === 0 || !ids.includes(agentId)) {
-            throw new Error("Access denied: agent not in scope for your organizations");
+            throw new Error(
+                "Access denied: agent is not linked to any database in your selected organizations; register databases on the agent and assign them to a project first"
+            );
         }
     }
     const slug = slugify(data.name);
@@ -483,11 +518,13 @@ export async function internalSetAlertPolicies(
     ctx: McpContext | null
 ): Promise<void> {
     void ctx;
-    await assertDatabaseInOrgScope(databaseId, orgIds);
+    const databaseOrgId = await assertDatabaseInOrgScope(databaseId, orgIds);
     await db.delete(drizzleDb.schemas.alertPolicy).where(eq(drizzleDb.schemas.alertPolicy.databaseId, databaseId));
     if (policies.length === 0) {
         return;
     }
+    const channelIds = policies.map((p) => p.channelId);
+    await assertNotificationChannelsUsableByDatabaseOrg(channelIds, databaseOrgId);
     const rows = policies.map((p) => ({
         databaseId,
         notificationChannelId: p.channelId,
@@ -526,6 +563,37 @@ export async function internalSetStoragePolicies(
             enabled: p.enabled ?? true,
         }))
     );
+}
+
+export async function internalGetDatabasePolicies(
+    databaseId: string,
+    orgIds: string[] | null,
+    ctx: McpContext | null
+): Promise<{
+    alert_policies: Array<{notification_channel_id: string; event_kinds: string[]; enabled: boolean}>;
+    storage_policies: Array<{storage_channel_id: string; enabled: boolean}>;
+}> {
+    void ctx;
+    await assertDatabaseInOrgScope(databaseId, orgIds);
+    const apRows = await db
+        .select()
+        .from(drizzleDb.schemas.alertPolicy)
+        .where(eq(drizzleDb.schemas.alertPolicy.databaseId, databaseId));
+    const spRows = await db
+        .select()
+        .from(drizzleDb.schemas.storagePolicy)
+        .where(eq(drizzleDb.schemas.storagePolicy.databaseId, databaseId));
+    return {
+        alert_policies: apRows.map((r) => ({
+            notification_channel_id: r.notificationChannelId,
+            event_kinds: [...r.eventKinds],
+            enabled: r.enabled,
+        })),
+        storage_policies: spRows.map((r) => ({
+            storage_channel_id: r.storageChannelId,
+            enabled: r.enabled,
+        })),
+    };
 }
 
 export async function internalCreateOrganization(

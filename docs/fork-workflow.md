@@ -55,3 +55,7 @@
 Автоматический релиз и публикация образов, завязанные на инфраструктуру апстрима, **выполняются только в репозитории `Portabase/portabase`**, не на форке (см. условия в `.github/workflows/release.yml` и `release-candidate.yml`).
 
 Свой образ и деплой настраиваются в **[portabase-deploy](https://github.com/Oxem-Studio/portabase-deploy)**. Дополнительно на форке: **автодеплой** при push в `oxem/deploy` (см. выше).
+
+## MCP (инструменты для Cursor / агентов)
+
+Сводка тулов, scope и различие notification vs storage channel: **[mcp-tools.md](./mcp-tools.md)**.

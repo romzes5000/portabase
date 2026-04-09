@@ -343,3 +343,52 @@ export async function internalListStorageChannels(orgIds: string[] | null): Prom
         return out;
     });
 }
+
+export async function internalListNotificationChannels(orgIds: string[] | null): Promise<Record<string, unknown>[]> {
+    let orgClause: ReturnType<typeof sql>;
+    if (orgIds === null) {
+        orgClause = sql``;
+    } else if (orgIds.length === 0) {
+        orgClause = sql`AND false`;
+    } else {
+        const inListNc = sql.join(
+            orgIds.map((id) => sql`${id}`),
+            sql`, `
+        );
+        const inListOnc = sql.join(
+            orgIds.map((id) => sql`${id}`),
+            sql`, `
+        );
+        orgClause = sql`AND (nc.organization_id IN (${inListNc}) OR EXISTS (SELECT 1 FROM organization_notification_channels onc WHERE onc.notification_channel_id = nc.id AND onc.organization_id IN (${inListOnc})))`;
+    }
+    const result = await db.execute(sql`
+    SELECT nc.id::text,
+           COALESCE(nc.organization_id::text, '') AS organization_id,
+           nc.provider::text,
+           nc.name,
+           nc.enabled,
+           nc.config,
+           nc.created_at
+    FROM notification_channel nc
+    WHERE nc.deleted_at IS NULL
+    ${orgClause}
+    ORDER BY nc.name
+  `);
+    const rows = result.rows as Record<string, unknown>[];
+    return rows.map((r) => {
+        const config = redactStorageConfig(r.config);
+        const out: Record<string, unknown> = {
+            id: r.id,
+            provider: r.provider,
+            name: r.name,
+            enabled: r.enabled,
+            config,
+            created_at: r.created_at,
+        };
+        const oid = r.organization_id;
+        if (oid != null && String(oid) !== "") {
+            out.organization_id = oid;
+        }
+        return out;
+    });
+}
