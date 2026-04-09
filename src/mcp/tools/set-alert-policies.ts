@@ -35,7 +35,10 @@ export function registerSetAlertPolicies(server: McpServer, ctx: McpContext | nu
                 "Replaces all existing alert policies for this database with the given list (delete + insert). Each policy references a notification channel id (from list_notification_channels), not a storage channel id. Legacy field channel_id is accepted as an alias for notification_channel_id.",
             inputSchema: z.object({
                 organization_id: z.string().optional().describe("Optional org hint for scope"),
-                database_id: z.string().uuid(),
+                database_id: z
+                    .string()
+                    .uuid()
+                    .describe("`databases.id` or `agent_database_id` from agent databases.json"),
                 policies: z.array(alertPolicyItemSchema),
             }),
             annotations: {readOnlyHint: false},

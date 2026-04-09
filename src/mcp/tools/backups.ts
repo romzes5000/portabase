@@ -2,6 +2,7 @@ import type {McpServer} from "@modelcontextprotocol/sdk/server/mcp.js";
 import {z} from "zod";
 
 import type {McpContext} from "@/lib/api/internal-auth";
+import {resolveDatabasePrimaryKeyOrThrow} from "@/lib/api/internal-mutations";
 import {internalListBackups} from "@/lib/api/internal-queries";
 import {toolErr, toolOk} from "@/mcp/json";
 import {resolveOrgScope} from "@/mcp/org-scope";
@@ -16,7 +17,10 @@ export function registerListBackups(server: McpServer, ctx: McpContext | null): 
                     .string()
                     .optional()
                     .describe("Organization UUID; omit for backups across all accessible organizations"),
-                database_id: z.string().optional().describe("Filter by database UUID"),
+                database_id: z
+                    .string()
+                    .optional()
+                    .describe("Filter by database: primary `databases.id` or `agent_database_id` from agent databases.json"),
                 status: z
                     .string()
                     .optional()
@@ -32,9 +36,13 @@ export function registerListBackups(server: McpServer, ctx: McpContext | null): 
                 const scope = resolveOrgScope(ctx, queryOrg);
                 const limit = args.limit ?? 100;
                 const offset = args.offset ?? 0;
+                let databaseIdFilter = args.database_id ?? "";
+                if (databaseIdFilter) {
+                    databaseIdFilter = await resolveDatabasePrimaryKeyOrThrow(databaseIdFilter);
+                }
                 const rows = await internalListBackups(
                     scope.orgIds,
-                    args.database_id ?? "",
+                    databaseIdFilter,
                     args.status ?? "",
                     limit,
                     offset

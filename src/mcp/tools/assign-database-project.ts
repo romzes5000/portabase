@@ -13,7 +13,10 @@ export function registerAssignDatabaseProject(server: McpServer, ctx: McpContext
             description: "Set database project_id (null to unassign). Project must be in an accessible organization.",
             inputSchema: z.object({
                 organization_id: z.string().optional().describe("Optional org hint for scope"),
-                database_id: z.string().uuid(),
+                database_id: z
+                    .string()
+                    .uuid()
+                    .describe("`databases.id` or `agent_database_id` from agent databases.json"),
                 project_id: z.string().uuid().nullable(),
             }),
             annotations: {readOnlyHint: false},

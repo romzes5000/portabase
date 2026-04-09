@@ -10,7 +10,8 @@ export function registerUpdateProject(server: McpServer, ctx: McpContext | null)
     server.registerTool(
         "update_project",
         {
-            description: "Update project name and/or attached database ids (same semantics as dashboard).",
+            description:
+                "Update project name and/or attached database ids (same semantics as dashboard). UUIDs may be primary `databases.id` or `agent_database_id` from agent config.",
             inputSchema: z.object({
                 organization_id: z
                     .string()
@@ -18,7 +19,9 @@ export function registerUpdateProject(server: McpServer, ctx: McpContext | null)
                     .describe("Optional org hint for scope resolution"),
                 project_id: z.string().uuid(),
                 name: z.string().min(1),
-                database_ids: z.array(z.string().uuid()),
+                database_ids: z
+                    .array(z.string().uuid())
+                    .describe("Each UUID may be `databases.id` or `agent_database_id` from the agent databases.json"),
             }),
             annotations: {readOnlyHint: false},
         },

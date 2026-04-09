@@ -10,11 +10,15 @@ export function registerCreateProject(server: McpServer, ctx: McpContext | null)
     server.registerTool(
         "create_project",
         {
-            description: "Create a project in an organization and optionally attach databases by id.",
+            description:
+                "Create a project in an organization and optionally attach databases by id (primary databases.id or agent_database_id from agent databases.json).",
             inputSchema: z.object({
                 organization_id: z.string().uuid(),
                 name: z.string().min(1),
-                database_ids: z.array(z.string().uuid()).optional(),
+                database_ids: z
+                    .array(z.string().uuid())
+                    .optional()
+                    .describe("Each UUID may be `databases.id` or `agent_database_id` from the agent databases.json"),
             }),
             annotations: {readOnlyHint: false},
         },

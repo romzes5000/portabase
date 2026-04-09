@@ -14,7 +14,10 @@ export function registerGetDatabasePolicies(server: McpServer, ctx: McpContext |
                 "Read current alert and storage policies for one database (before calling set_alert_policies / set_storage_policies, which replace all policies).",
             inputSchema: z.object({
                 organization_id: z.string().optional().describe("Optional org hint for scope"),
-                database_id: z.string().uuid(),
+                database_id: z
+                    .string()
+                    .uuid()
+                    .describe("`databases.id` or `agent_database_id` from agent databases.json"),
             }),
             annotations: {readOnlyHint: true},
         },

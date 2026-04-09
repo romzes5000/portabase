@@ -20,7 +20,10 @@ export function registerSetRetentionPolicy(server: McpServer, ctx: McpContext | 
             description: "Create or update retention policy for a database.",
             inputSchema: z.object({
                 organization_id: z.string().optional().describe("Optional org hint for scope"),
-                database_id: z.string().uuid(),
+                database_id: z
+                    .string()
+                    .uuid()
+                    .describe("`databases.id` or `agent_database_id` from agent databases.json"),
                 type: z.enum(["count", "days", "gfs"]),
                 count: z.number().optional(),
                 days: z.number().optional(),

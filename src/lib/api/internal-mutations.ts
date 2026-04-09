@@ -1,5 +1,5 @@
 import {v4 as uuidv4} from "uuid";
-import {and, count, eq, inArray, isNull, ne} from "drizzle-orm";
+import {and, count, eq, inArray, isNull, ne, or} from "drizzle-orm";
 
 import {db} from "@/db";
 import * as drizzleDb from "@/db";
@@ -17,14 +17,46 @@ function assertOrgInScope(orgIds: string[] | null, organizationId: string): void
     }
 }
 
-/** Returns organization id via database → project, or null if unassigned. */
-export async function getDatabaseOrganizationId(databaseId: string): Promise<string | null> {
-    const row = await db.query.database.findFirst({
-        where: and(eq(drizzleDb.schemas.database.id, databaseId), isNull(drizzleDb.schemas.database.deletedAt)),
+/** Row by primary `databases.id` or stable `agent_database_id` (from agent `databases.json`). */
+async function findDatabaseByExternalId(externalId: string) {
+    return db.query.database.findFirst({
+        where: and(
+            or(
+                eq(drizzleDb.schemas.database.id, externalId),
+                eq(drizzleDb.schemas.database.agentDatabaseId, externalId)
+            ),
+            isNull(drizzleDb.schemas.database.deletedAt)
+        ),
         with: {
             project: true,
         },
     });
+}
+
+export async function resolveDatabasePrimaryKeyOrThrow(externalId: string): Promise<string> {
+    const row = await findDatabaseByExternalId(externalId);
+    if (!row) {
+        throw new Error("Database not found");
+    }
+    return row.id;
+}
+
+export async function resolveDatabasePrimaryKeysOrThrow(externalIds: string[]): Promise<string[]> {
+    const seen = new Set<string>();
+    const pks: string[] = [];
+    for (const id of externalIds) {
+        const pk = await resolveDatabasePrimaryKeyOrThrow(id);
+        if (!seen.has(pk)) {
+            seen.add(pk);
+            pks.push(pk);
+        }
+    }
+    return pks;
+}
+
+/** Returns organization id via database → project, or null if unassigned or row missing. */
+export async function getDatabaseOrganizationId(databaseId: string): Promise<string | null> {
+    const row = await findDatabaseByExternalId(databaseId);
     if (!row?.projectId || !row.project) {
         return null;
     }
@@ -32,12 +64,15 @@ export async function getDatabaseOrganizationId(databaseId: string): Promise<str
 }
 
 async function assertDatabaseInOrgScope(databaseId: string, orgIds: string[] | null): Promise<string> {
-    const orgId = await getDatabaseOrganizationId(databaseId);
-    if (!orgId) {
+    const row = await findDatabaseByExternalId(databaseId);
+    if (!row) {
+        throw new Error("Database not found");
+    }
+    if (!row.projectId || !row.project) {
         throw new Error("Database must be assigned to a project in an organization for this operation");
     }
-    assertOrgInScope(orgIds, orgId);
-    return orgId;
+    assertOrgInScope(orgIds, row.project.organizationId);
+    return row.project.organizationId;
 }
 
 /** Each id must be a notification_channel row usable by databaseOrgId (direct org or organization_notification_channels). */
@@ -99,10 +134,11 @@ export async function internalTriggerBackup(
     ctx: McpContext | null
 ): Promise<typeof drizzleDb.schemas.backup.$inferSelect> {
     void ctx;
-    await assertDatabaseInOrgScope(databaseId, orgIds);
+    const pk = await resolveDatabasePrimaryKeyOrThrow(databaseId);
+    await assertDatabaseInOrgScope(pk, orgIds);
     const [row] = await db
         .insert(drizzleDb.schemas.backup)
-        .values({databaseId, status: "waiting"})
+        .values({databaseId: pk, status: "waiting"})
         .returning();
     if (!row) {
         throw new Error("Failed to create backup");
@@ -138,7 +174,8 @@ export async function internalCreateProject(
     }
 
     if (databaseIds && databaseIds.length > 0) {
-        for (const dbId of databaseIds) {
+        const resolvedIds = await resolveDatabasePrimaryKeysOrThrow(databaseIds);
+        for (const dbId of resolvedIds) {
             const oid = await getDatabaseOrganizationId(dbId);
             if (oid && oid !== organizationId) {
                 throw new Error(`Database ${dbId} belongs to another organization`);
@@ -147,7 +184,7 @@ export async function internalCreateProject(
         await db
             .update(drizzleDb.schemas.database)
             .set({projectId: created.id})
-            .where(inArray(drizzleDb.schemas.database.id, databaseIds));
+            .where(inArray(drizzleDb.schemas.database.id, resolvedIds));
     }
 
     return created;
@@ -170,7 +207,7 @@ export async function internalUpdateProject(
     assertOrgInScope(orgIds, existing.organizationId);
 
     const existingDbIds = existing.databases.map((d) => d.id);
-    const newDbIds = data.databases;
+    const newDbIds = await resolveDatabasePrimaryKeysOrThrow(data.databases);
     const databasesToAdd = newDbIds.filter((id) => !existingDbIds.includes(id));
     const databasesToRemove = existingDbIds.filter((id) => !newDbIds.includes(id));
 
@@ -357,10 +394,11 @@ export async function internalUpdateDatabase(
     ctx: McpContext | null
 ): Promise<typeof drizzleDb.schemas.database.$inferSelect> {
     void ctx;
-    await assertDatabaseInOrgScope(databaseId, orgIds);
+    const pk = await resolveDatabasePrimaryKeyOrThrow(databaseId);
+    await assertDatabaseInOrgScope(pk, orgIds);
     if (description === undefined) {
         const row = await db.query.database.findFirst({
-            where: eq(drizzleDb.schemas.database.id, databaseId),
+            where: eq(drizzleDb.schemas.database.id, pk),
         });
         if (!row) {
             throw new Error("Database not found");
@@ -370,7 +408,7 @@ export async function internalUpdateDatabase(
     const [row] = await db
         .update(drizzleDb.schemas.database)
         .set({description})
-        .where(eq(drizzleDb.schemas.database.id, databaseId))
+        .where(eq(drizzleDb.schemas.database.id, pk))
         .returning();
     if (!row) {
         throw new Error("Database not found");
@@ -385,6 +423,7 @@ export async function internalAssignDatabaseProject(
     ctx: McpContext | null
 ): Promise<typeof drizzleDb.schemas.database.$inferSelect> {
     void ctx;
+    const pk = await resolveDatabasePrimaryKeyOrThrow(databaseId);
     if (projectId) {
         const proj = await db.query.project.findFirst({
             where: and(eq(drizzleDb.schemas.project.id, projectId), isNull(drizzleDb.schemas.project.deletedAt)),
@@ -394,7 +433,7 @@ export async function internalAssignDatabaseProject(
         }
         assertOrgInScope(orgIds, proj.organizationId);
     } else if (orgIds !== null) {
-        const oid = await getDatabaseOrganizationId(databaseId);
+        const oid = await getDatabaseOrganizationId(pk);
         if (oid) {
             assertOrgInScope(orgIds, oid);
         }
@@ -402,7 +441,7 @@ export async function internalAssignDatabaseProject(
     const [row] = await db
         .update(drizzleDb.schemas.database)
         .set({projectId})
-        .where(eq(drizzleDb.schemas.database.id, databaseId))
+        .where(eq(drizzleDb.schemas.database.id, pk))
         .returning();
     if (!row) {
         throw new Error("Database not found");
@@ -417,12 +456,13 @@ export async function internalSetBackupSchedule(
     ctx: McpContext | null
 ): Promise<typeof drizzleDb.schemas.database.$inferSelect> {
     void ctx;
-    await assertDatabaseInOrgScope(databaseId, orgIds);
+    const pk = await resolveDatabasePrimaryKeyOrThrow(databaseId);
+    await assertDatabaseInOrgScope(pk, orgIds);
     const cronPolicy = cron === "" ? null : cron;
     const [updated] = await db
         .update(drizzleDb.schemas.database)
         .set({backupPolicy: cronPolicy})
-        .where(eq(drizzleDb.schemas.database.id, databaseId))
+        .where(eq(drizzleDb.schemas.database.id, pk))
         .returning();
     if (!updated) {
         throw new Error("Database not found");
@@ -430,7 +470,7 @@ export async function internalSetBackupSchedule(
     if (cronPolicy == null) {
         await db
             .delete(drizzleDb.schemas.retentionPolicy)
-            .where(eq(drizzleDb.schemas.retentionPolicy.databaseId, databaseId));
+            .where(eq(drizzleDb.schemas.retentionPolicy.databaseId, pk));
     }
     return updated;
 }
@@ -452,12 +492,13 @@ export async function internalSetRetentionPolicy(
     ctx: McpContext | null
 ): Promise<typeof drizzleDb.schemas.retentionPolicy.$inferSelect> {
     void ctx;
-    await assertDatabaseInOrgScope(databaseId, orgIds);
+    const pk = await resolveDatabasePrimaryKeyOrThrow(databaseId);
+    await assertDatabaseInOrgScope(pk, orgIds);
 
     const existing = await db
         .select()
         .from(drizzleDb.schemas.retentionPolicy)
-        .where(eq(drizzleDb.schemas.retentionPolicy.databaseId, databaseId))
+        .where(eq(drizzleDb.schemas.retentionPolicy.databaseId, pk))
         .limit(1);
 
     const values = {
@@ -474,7 +515,7 @@ export async function internalSetRetentionPolicy(
         const [u] = await db
             .update(drizzleDb.schemas.retentionPolicy)
             .set(values)
-            .where(eq(drizzleDb.schemas.retentionPolicy.databaseId, databaseId))
+            .where(eq(drizzleDb.schemas.retentionPolicy.databaseId, pk))
             .returning();
         if (!u) {
             throw new Error("Failed to update retention policy");
@@ -483,7 +524,7 @@ export async function internalSetRetentionPolicy(
     }
     const [ins] = await db
         .insert(drizzleDb.schemas.retentionPolicy)
-        .values({databaseId, ...values})
+        .values({databaseId: pk, ...values})
         .returning();
     if (!ins) {
         throw new Error("Failed to create retention policy");
@@ -511,15 +552,16 @@ export async function internalSetAlertPolicies(
     ctx: McpContext | null
 ): Promise<void> {
     void ctx;
-    const databaseOrgId = await assertDatabaseInOrgScope(databaseId, orgIds);
-    await db.delete(drizzleDb.schemas.alertPolicy).where(eq(drizzleDb.schemas.alertPolicy.databaseId, databaseId));
+    const pk = await resolveDatabasePrimaryKeyOrThrow(databaseId);
+    const databaseOrgId = await assertDatabaseInOrgScope(pk, orgIds);
+    await db.delete(drizzleDb.schemas.alertPolicy).where(eq(drizzleDb.schemas.alertPolicy.databaseId, pk));
     if (policies.length === 0) {
         return;
     }
     const channelIds = policies.map((p) => p.channelId);
     await assertNotificationChannelsUsableByDatabaseOrg(channelIds, databaseOrgId);
     const rows = policies.map((p) => ({
-        databaseId,
+        databaseId: pk,
         notificationChannelId: p.channelId,
         eventKinds: (p.eventKinds?.length ? p.eventKinds : (["error_backup"] as const)) as Array<
             | "error_backup"
@@ -544,14 +586,15 @@ export async function internalSetStoragePolicies(
     ctx: McpContext | null
 ): Promise<void> {
     void ctx;
-    await assertDatabaseInOrgScope(databaseId, orgIds);
-    await db.delete(drizzleDb.schemas.storagePolicy).where(eq(drizzleDb.schemas.storagePolicy.databaseId, databaseId));
+    const pk = await resolveDatabasePrimaryKeyOrThrow(databaseId);
+    await assertDatabaseInOrgScope(pk, orgIds);
+    await db.delete(drizzleDb.schemas.storagePolicy).where(eq(drizzleDb.schemas.storagePolicy.databaseId, pk));
     if (policies.length === 0) {
         return;
     }
     await db.insert(drizzleDb.schemas.storagePolicy).values(
         policies.map((p) => ({
-            databaseId,
+            databaseId: pk,
             storageChannelId: p.channelId,
             enabled: p.enabled ?? true,
         }))
@@ -567,15 +610,16 @@ export async function internalGetDatabasePolicies(
     storage_policies: Array<{storage_channel_id: string; enabled: boolean}>;
 }> {
     void ctx;
-    await assertDatabaseInOrgScope(databaseId, orgIds);
+    const pk = await resolveDatabasePrimaryKeyOrThrow(databaseId);
+    await assertDatabaseInOrgScope(pk, orgIds);
     const apRows = await db
         .select()
         .from(drizzleDb.schemas.alertPolicy)
-        .where(eq(drizzleDb.schemas.alertPolicy.databaseId, databaseId));
+        .where(eq(drizzleDb.schemas.alertPolicy.databaseId, pk));
     const spRows = await db
         .select()
         .from(drizzleDb.schemas.storagePolicy)
-        .where(eq(drizzleDb.schemas.storagePolicy.databaseId, databaseId));
+        .where(eq(drizzleDb.schemas.storagePolicy.databaseId, pk));
     return {
         alert_policies: apRows.map((r) => ({
             notification_channel_id: r.notificationChannelId,

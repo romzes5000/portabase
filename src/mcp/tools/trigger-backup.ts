@@ -16,7 +16,10 @@ export function registerTriggerBackup(server: McpServer, ctx: McpContext | null)
                     .string()
                     .optional()
                     .describe("Organization UUID for scope; omit for all accessible orgs"),
-                database_id: z.string().uuid(),
+                database_id: z
+                    .string()
+                    .uuid()
+                    .describe("`databases.id` or `agent_database_id` from agent databases.json"),
             }),
             annotations: {readOnlyHint: false},
         },

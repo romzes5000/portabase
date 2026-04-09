@@ -1,4 +1,5 @@
 import {verifyApiKeyRequest} from "@/lib/api/internal-auth";
+import {resolveDatabasePrimaryKeyOrThrow} from "@/lib/api/internal-mutations";
 import {internalListBackups} from "@/lib/api/internal-queries";
 import {loadOrgScopeForApiKey, OrgAccessDeniedError} from "@/mcp/org-scope";
 
@@ -8,7 +9,7 @@ export async function GET(request: Request) {
         return auth.response;
     }
     const url = new URL(request.url);
-    const databaseId = url.searchParams.get("database_id") ?? "";
+    let databaseId = url.searchParams.get("database_id") ?? "";
     const status = url.searchParams.get("status") ?? "";
     const limit = parseInt(url.searchParams.get("limit") ?? "100", 10);
     const offset = parseInt(url.searchParams.get("offset") ?? "0", 10);
@@ -25,6 +26,9 @@ export async function GET(request: Request) {
         );
     }
     try {
+        if (databaseId) {
+            databaseId = await resolveDatabasePrimaryKeyOrThrow(databaseId);
+        }
         const data = await internalListBackups(scope.orgIds, databaseId, status, limit, offset);
         return Response.json({ok: true, data});
     } catch (e) {

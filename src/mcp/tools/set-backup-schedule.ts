@@ -13,7 +13,10 @@ export function registerSetBackupSchedule(server: McpServer, ctx: McpContext | n
             description: "Set database backup cron string (empty string clears schedule and retention policy).",
             inputSchema: z.object({
                 organization_id: z.string().optional().describe("Optional org hint for scope"),
-                database_id: z.string().uuid(),
+                database_id: z
+                    .string()
+                    .uuid()
+                    .describe("`databases.id` or `agent_database_id` from agent databases.json"),
                 cron: z.string().describe("Cron expression or empty string to disable"),
             }),
             annotations: {readOnlyHint: false},

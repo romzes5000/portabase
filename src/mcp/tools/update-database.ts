@@ -13,7 +13,10 @@ export function registerUpdateDatabase(server: McpServer, ctx: McpContext | null
             description: "Update database description (database must belong to a project in scope).",
             inputSchema: z.object({
                 organization_id: z.string().optional().describe("Optional org hint for scope"),
-                database_id: z.string().uuid(),
+                database_id: z
+                    .string()
+                    .uuid()
+                    .describe("`databases.id` or `agent_database_id` from agent databases.json"),
                 description: z.string(),
             }),
             annotations: {readOnlyHint: false},
