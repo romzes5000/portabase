@@ -22,6 +22,7 @@ import {Input} from "@/components/ui/input";
 import {Label} from "@/components/ui/label";
 import {RadioGroup, RadioGroupItem} from "@/components/ui/radio-group";
 import type {ApiKeyAccessLevel} from "@/features/keys/api-keys.scopes";
+import {Copy} from "lucide-react";
 import {useCallback, useEffect, useState} from "react";
 import {toast} from "sonner";
 
@@ -207,22 +208,31 @@ export function UserApiKeysTab() {
                 </AlertDialogContent>
             </AlertDialog>
             <Dialog open={newKeyPlaintext !== null} onOpenChange={(open) => !open && closeNewKeyDialog()}>
-                <DialogContent className="sm:max-w-lg">
+                <DialogContent className="sm:max-w-xl">
                     <DialogHeader>
                         <DialogTitle>Your new API key</DialogTitle>
                         <DialogDescription>
                             Copy it now and store it securely. You will not be able to see the full key again.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="relative rounded-md border bg-muted/50 p-3">
-                        <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-all font-mono text-xs">
-                            {newKeyPlaintext ?? ""}
-                        </pre>
-                    </div>
-                    <DialogFooter className="gap-2 sm:gap-0">
-                        <Button type="button" variant="outline" onClick={() => void copyNewKey()}>
-                            Copy
+                    <div className="relative min-w-0 rounded-md border bg-muted/50">
+                        <div className="min-w-0 overflow-x-auto overflow-y-hidden py-2.5 pl-3 pr-12">
+                            <code className="block w-max min-w-full font-mono text-xs whitespace-nowrap">
+                                {newKeyPlaintext ?? ""}
+                            </code>
+                        </div>
+                        <Button
+                            type="button"
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-1 top-1/2 size-9 shrink-0 -translate-y-1/2"
+                            aria-label="Copy API key"
+                            onClick={() => void copyNewKey()}
+                        >
+                            <Copy className="size-4" />
                         </Button>
+                    </div>
+                    <DialogFooter>
                         <Button type="button" onClick={closeNewKeyDialog}>
                             Done
                         </Button>
