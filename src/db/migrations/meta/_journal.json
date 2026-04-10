@@ -351,6 +351,13 @@
       "when": 1775586557316,
       "tag": "0049_demonic_otto_octavius",
       "breakpoints": true
+    },
+    {
+      "idx": 50,
+      "version": "7",
+      "when": 1775839907086,
+      "tag": "0050_busy_blue_shield",
+      "breakpoints": true
     }
   ]
 }
