@@ -14,7 +14,7 @@ export function registerStatusResource(server: McpServer, ctx: McpContext | null
         },
         async (uri) => {
             const scope = resolveOrgScope(ctx, null);
-            const agents = await internalListAgents(scope.orgIds, false);
+            const agents = await internalListAgents(scope.orgIds, false, true);
             let online = 0;
             let offline = 0;
             for (const row of agents) {

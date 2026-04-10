@@ -1,6 +1,6 @@
 # Portabase MCP
 
-[Model Context Protocol](https://modelcontextprotocol.io): те же tools и ресурс **`portabase://status`**, что и read-only internal API — **`src/lib/api/internal-queries.ts`** (Drizzle).
+[Model Context Protocol](https://modelcontextprotocol.io): общий слой **`src/lib/api/internal-queries.ts`** (Drizzle) с internal HTTP. Для **агентов** MCP и ресурс **`portabase://status`** используют **расширенный** org scope (**`organization_agents`**, **`agents.organization_id`**, плюс БД в проектах); **`GET /api/internal/agents`** по-прежнему только агенты с БД в проектах org.
 
 ## Удалённо: HTTPS + Bearer (рекомендуется для Cursor)
 
@@ -47,6 +47,10 @@ pnpm mcp
 Альтернатива: полный путь к **`pnpm`** и **`node`** (см. `which pnpm` / `which node` в терминале).
 
 Не дублировать **`DATABASE_URL`** в JSON — только в **`.env`** репозитория.
+
+## Агенты и организации
+
+Видимость агента при **HTTP MCP** (и проверки **`get_agent_edge_key`**, **`update_agent`**, **`delete_agent`**) строится по org scope ключа: учитываются строки **`organization_agents`**, колонка **`agents.organization_id`**, а также агенты с БД в проектах этих организаций. **`create_agent`** принимает опциональный **`organization_id`** (owner/admin в org при HTTP) — как создание агента из вкладки Organization → Agents в UI.
 
 ## Идентификаторы БД в MCP
 

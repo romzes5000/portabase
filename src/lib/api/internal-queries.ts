@@ -1,5 +1,5 @@
 import {db} from "@/db";
-import {agent} from "@/db/schema/08_agent";
+import {agent, organizationAgent} from "@/db/schema/08_agent";
 import {database} from "@/db/schema/07_database";
 import {project} from "@/db/schema/06_project";
 import {redactStorageConfig} from "@/lib/api/redact-storage-config";
@@ -29,7 +29,12 @@ function sqlOrgInProject(orgIds: string[] | null, projectAlias = "p"): ReturnTyp
     )})`;
 }
 
-/** Exported for MCP write paths (agent access by org via projects/databases). */
+const activeAgentClause = and(isNull(agent.deletedAt), eq(agent.isArchived, false));
+
+/**
+ * Internal HTTP `/api/internal/agents` and shared helpers: agents linked only via
+ * databases assigned to projects in the given orgs (legacy scope).
+ */
 export async function agentIdsForOrganizations(orgIds: string[] | null): Promise<string[] | undefined> {
     if (orgIds === null) {
         return undefined;
@@ -49,12 +54,57 @@ export async function agentIdsForOrganizations(orgIds: string[] | null): Promise
         .select({agentId: database.agentId})
         .from(database)
         .where(and(inArray(database.projectId, pids), isNull(database.deletedAt)));
-    return [...new Set(dbs.map((d) => d.agentId))];
+    return [...new Set(dbs.map((d) => d.agentId).filter(Boolean))] as string[];
 }
 
-/** Error message shared with MCP tools that gate agent access by org-linked databases. */
+/**
+ * MCP-only org scope: {@link agentIdsForOrganizations} plus `organization_agents` and `agents.organization_id`.
+ */
+export async function agentIdsForMcpOrgScope(orgIds: string[] | null): Promise<string[] | undefined> {
+    if (orgIds === null) {
+        return undefined;
+    }
+    if (orgIds.length === 0) {
+        return [];
+    }
+    const ids = new Set<string>();
+
+    const fromDatabases = await agentIdsForOrganizations(orgIds);
+    if (fromDatabases) {
+        for (const id of fromDatabases) {
+            ids.add(id);
+        }
+    }
+
+    const fromOrgLink = await db
+        .select({id: agent.id})
+        .from(organizationAgent)
+        .innerJoin(agent, eq(organizationAgent.agentId, agent.id))
+        .where(
+            and(
+                inArray(organizationAgent.organizationId, orgIds),
+                isNull(organizationAgent.deletedAt),
+                activeAgentClause
+            )
+        );
+    for (const r of fromOrgLink) {
+        ids.add(r.id);
+    }
+
+    const fromAgentOrgColumn = await db
+        .select({id: agent.id})
+        .from(agent)
+        .where(and(inArray(agent.organizationId, orgIds), activeAgentClause));
+    for (const r of fromAgentOrgColumn) {
+        ids.add(r.id);
+    }
+
+    return [...ids];
+}
+
+/** Error message shared with MCP tools that gate agent access by org scope. */
 export const AGENT_MCP_ACCESS_DENIED_MESSAGE =
-    "Access denied: agent is not linked to any database in your selected organizations; register databases on the agent and assign them to a project first";
+    "Access denied: agent is not in your selected organizations (link via Organization Agents, agents.organization_id, or a database assigned to a project in the org)";
 
 /**
  * `ids === undefined` → no org filter (stdio / full access). Otherwise agent must be in the list.
@@ -68,23 +118,30 @@ export function assertAgentIdInOrgScopeList(agentId: string, ids: string[] | und
 }
 
 /**
- * HTTP MCP: `agentId` must appear in {@link agentIdsForOrganizations}.
+ * MCP: `agentId` must appear in {@link agentIdsForMcpOrgScope}.
  * Stdio (`orgIds` from `resolveOrgScope` when `ctx` is null): `orgIds` is null → no filter.
  */
 export async function assertAgentIdAllowedForMcpOrgScope(
     agentId: string,
     orgIds: string[] | null
 ): Promise<void> {
-    const ids = await agentIdsForOrganizations(orgIds);
+    const ids = await agentIdsForMcpOrgScope(orgIds);
     assertAgentIdInOrgScopeList(agentId, ids);
 }
 
+/**
+ * @param useMcpOrgScope When true (MCP tools / `portabase://status`), include agents linked via
+ * `organization_agents` / `agents.organization_id`. When false (default), match `GET /api/internal/agents`.
+ */
 export async function internalListAgents(
     orgIds: string[] | null,
-    includeArchived: boolean
+    includeArchived: boolean,
+    useMcpOrgScope = false
 ): Promise<Record<string, unknown>[]> {
     const thresholdMs = agentOnlineThresholdMs();
-    const ids = await agentIdsForOrganizations(orgIds);
+    const ids = useMcpOrgScope
+        ? await agentIdsForMcpOrgScope(orgIds)
+        : await agentIdsForOrganizations(orgIds);
     let agentIdFilter: string[] | undefined;
     if (ids !== undefined) {
         if (ids.length === 0) {

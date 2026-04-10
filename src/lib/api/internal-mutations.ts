@@ -285,19 +285,31 @@ export async function internalDeleteProject(
 export async function internalCreateAgent(
     name: string,
     description: string,
-    _orgIds: string[] | null,
-    _ctx: McpContext | null
+    organizationId: string | null,
+    ctx: McpContext | null
 ): Promise<typeof drizzleDb.schemas.agent.$inferSelect> {
-    void _orgIds;
-    void _ctx;
+    if (organizationId) {
+        requireOrgOwnerOrAdmin(ctx, organizationId);
+    }
     const slug = slugify(name);
     await verifyAgentSlugUnique(slug);
     const [row] = await db
         .insert(drizzleDb.schemas.agent)
-        .values({name, description, slug})
+        .values({
+            name,
+            description,
+            slug,
+            ...(organizationId ? {organizationId} : {}),
+        })
         .returning();
     if (!row) {
         throw new Error("Failed to create agent");
+    }
+    if (organizationId) {
+        await db.insert(drizzleDb.schemas.organizationAgent).values({
+            organizationId,
+            agentId: row.id,
+        });
     }
     return row;
 }
@@ -324,7 +336,7 @@ export async function internalUpdateAgent(
 }
 
 async function agentOrgIdsForDeleteCheck(agentId: string): Promise<string[]> {
-    const rows = await db
+    const fromDatabases = await db
         .selectDistinct({oid: drizzleDb.schemas.project.organizationId})
         .from(drizzleDb.schemas.database)
         .innerJoin(
@@ -338,7 +350,37 @@ async function agentOrgIdsForDeleteCheck(agentId: string): Promise<string[]> {
                 isNull(drizzleDb.schemas.project.deletedAt)
             )
         );
-    return rows.map((r) => r.oid).filter(Boolean) as string[];
+
+    const fromOrgAgents = await db
+        .selectDistinct({oid: drizzleDb.schemas.organizationAgent.organizationId})
+        .from(drizzleDb.schemas.organizationAgent)
+        .where(
+            and(
+                eq(drizzleDb.schemas.organizationAgent.agentId, agentId),
+                isNull(drizzleDb.schemas.organizationAgent.deletedAt)
+            )
+        );
+
+    const agentRow = await db.query.agent.findFirst({
+        where: eq(drizzleDb.schemas.agent.id, agentId),
+        columns: {organizationId: true},
+    });
+
+    const set = new Set<string>();
+    for (const r of fromDatabases) {
+        if (r.oid) {
+            set.add(r.oid);
+        }
+    }
+    for (const r of fromOrgAgents) {
+        if (r.oid) {
+            set.add(r.oid);
+        }
+    }
+    if (agentRow?.organizationId) {
+        set.add(agentRow.organizationId);
+    }
+    return [...set];
 }
 
 function requireOwnerOrAdminInAnyOrg(ctx: McpContext | null, orgIds: string[]): void {
@@ -353,7 +395,9 @@ function requireOwnerOrAdminInAnyOrg(ctx: McpContext | null, orgIds: string[]): 
         return m && (m.role === "owner" || m.role === "admin");
     });
     if (!ok) {
-        throw new Error("Access denied: requires owner or admin in an organization that uses this agent");
+        throw new Error(
+            "Access denied: requires owner or admin in an organization this agent is linked to (databases, organization_agents, or agents.organization_id)"
+        );
     }
 }
 

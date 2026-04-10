@@ -28,7 +28,7 @@ export function registerListAgents(server: McpServer, ctx: McpContext | null): v
             try {
                 const queryOrg = args.organization_id?.trim() || null;
                 const scope = resolveOrgScope(ctx, queryOrg);
-                const rows = await internalListAgents(scope.orgIds, args.include_archived ?? false);
+                const rows = await internalListAgents(scope.orgIds, args.include_archived ?? false, true);
                 return toolOk({ok: true, agents: rows});
             } catch (e) {
                 return toolErr("list_agents", e);

@@ -15,15 +15,23 @@ export function registerCreateAgent(server: McpServer, ctx: McpContext | null): 
             inputSchema: z.object({
                 name: z.string().min(1),
                 description: z.string().optional().default(""),
+                organization_id: z
+                    .string()
+                    .uuid()
+                    .optional()
+                    .describe(
+                        "Optional organization UUID: links the agent to that org (organization_agents + agents.organization_id), same as UI. HTTP MCP requires owner/admin in that org."
+                    ),
             }),
             annotations: {readOnlyHint: false},
         },
         async (args) => {
             try {
+                const orgId = args.organization_id?.trim() || null;
                 const row = await internalCreateAgent(
                     args.name,
                     args.description ?? "",
-                    null,
+                    orgId,
                     ctx
                 );
                 let edgeKey: string | null = null;
