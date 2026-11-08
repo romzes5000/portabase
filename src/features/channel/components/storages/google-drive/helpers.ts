@@ -2,6 +2,10 @@ import {drive_v3, google} from "googleapis";
 import {GoogleDriveConfig} from "@/features/channel/components/storages/google-drive/types";
 import Drive = drive_v3.Drive;
 import {getServerUrl} from "@/utils/get-server-url";
+import {
+    DRIVE_NAME_LIST_PARAMS,
+    oldestIdFromDriveFiles,
+} from "@/features/channel/components/storages/google-drive/pick-oldest-drive-item";
 
 export async function getGoogleDriveClient(config: GoogleDriveConfig): Promise<Drive> {
     const baseUrl = getServerUrl();
@@ -29,13 +33,10 @@ export async function findFileByName(
 ): Promise<string | null> {
     const res = await drive.files.list({
         q: `name='${name}' and '${folderId}' in parents and trashed=false`,
-        fields: "files(id)",
-        pageSize: 1,
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
+        ...DRIVE_NAME_LIST_PARAMS,
     });
 
-    return res.data.files?.[0]?.id ?? null;
+    return oldestIdFromDriveFiles(res.data.files) ?? null;
 }
 
 
@@ -46,13 +47,12 @@ export async function ensureFolderPath(client: any, path: string, rootFolderId: 
     for (const part of parts) {
         const res = await client.files.list({
             q: `'${parentId}' in parents and name='${part}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-            fields: "files(id, name)",
-            supportsAllDrives: true,
-            includeItemsFromAllDrives: true,
+            ...DRIVE_NAME_LIST_PARAMS,
         });
 
-        if (res.data.files && res.data.files.length > 0) {
-            parentId = res.data.files[0].id!;
+        const existingId = oldestIdFromDriveFiles(res.data.files);
+        if (existingId) {
+            parentId = existingId;
         } else {
             const folder = await client.files.create({
                 requestBody: {
@@ -79,12 +79,11 @@ export async function resolveFilePath(client: any, fullPath: string, rootFolderI
     for (const part of parts) {
         const res = await client.files.list({
             q: `'${parentId}' in parents and name='${part}' and mimeType='application/vnd.google-apps.folder' and trashed=false`,
-            fields: "files(id, name)",
-            supportsAllDrives: true,
-            includeItemsFromAllDrives: true,
+            ...DRIVE_NAME_LIST_PARAMS,
         });
-        if (res.data.files && res.data.files.length > 0) {
-            parentId = res.data.files[0].id!;
+        const existingId = oldestIdFromDriveFiles(res.data.files);
+        if (existingId) {
+            parentId = existingId;
         } else {
             return null;
         }
@@ -92,10 +91,8 @@ export async function resolveFilePath(client: any, fullPath: string, rootFolderI
 
     const fileRes = await client.files.list({
         q: `'${parentId}' in parents and name='${fileName}' and trashed=false`,
-        fields: "files(id, name)",
-        supportsAllDrives: true,
-        includeItemsFromAllDrives: true,
+        ...DRIVE_NAME_LIST_PARAMS,
     });
 
-    return fileRes.data.files?.[0]?.id || null;
+    return oldestIdFromDriveFiles(fileRes.data.files) ?? null;
 }
